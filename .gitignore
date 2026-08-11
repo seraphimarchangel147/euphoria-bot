@@ -6,3 +6,5 @@ dist/
 build/
 .venv/
 node_modules/
+.pytest_cache/
+tokens.json

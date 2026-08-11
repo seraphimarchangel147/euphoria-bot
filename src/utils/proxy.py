@@ -1,84 +1,75 @@
-"""SOCKS5 proxy helper — auto-discovers non-US proxies to bypass geo-blocking."""
-import subprocess
-import json
+"""SOCKS5 proxy discovery for the geo-block.
+
+Rewritten to use httpx instead of shelling out to curl per candidate, and to
+probe candidates concurrently so a working proxy is found in seconds rather
+than minutes.
+"""
+from __future__ import annotations
+
+import concurrent.futures
 import time
 
-PROXY_SCRAPE_URL = "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5&timeout=3000&country=all&ssl=all&anonymity=all"
+import httpx
 
-_cached_proxies: list[str] = []
-_cache_time: float = 0
-CACHE_TTL = 600  # 10 minutes
+from config import settings
+
+PROXYSCRAPE_URL = (
+    "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5"
+    "&timeout=3000&country=all&ssl=all&anonymity=all"
+)
+CACHE_TTL = 600
+_cache: tuple[float, list[str]] = (0.0, [])
 
 
-def fetch_proxies() -> list[str]:
-    """Fetch fresh SOCKS5 proxy list from proxyscrape."""
-    global _cached_proxies, _cache_time
-    if _cached_proxies and time.time() - _cache_time < CACHE_TTL:
-        return _cached_proxies
-
+def fetch_proxies(limit: int = 60) -> list[str]:
+    """Fetch a SOCKS5 candidate list (cached for CACHE_TTL seconds)."""
+    global _cache
+    ts, cached = _cache
+    if cached and time.time() - ts < CACHE_TTL:
+        return cached[:limit]
     try:
-        result = subprocess.run(
-            ["curl", "-s", PROXY_SCRAPE_URL, "--connect-timeout", "10"],
-            capture_output=True, text=True, timeout=15,
-        )
-        proxies = [p.strip() for p in result.stdout.strip().split("\n") if p.strip()]
-        _cached_proxies = proxies
-        _cache_time = time.time()
-        return proxies
+        resp = httpx.get(PROXYSCRAPE_URL, timeout=15.0)
+        resp.raise_for_status()
+        proxies = [p.strip() for p in resp.text.splitlines() if p.strip() and ":" in p]
     except Exception:
-        return _cached_proxies
+        return cached[:limit]
+    _cache = (time.time(), proxies)
+    return proxies[:limit]
 
 
-def find_working_proxy(test_url: str = "https://euphoria.finance", timeout: int = 10) -> str | None:
-    """Find a SOCKS5 proxy that bypasses Euphoria's geo-block."""
-    proxies = fetch_proxies()
-    for proxy in proxies[:20]:
-        try:
-            result = subprocess.run(
-                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                 "--proxy", f"socks5h://{proxy}", test_url,
-                 "-H", "User-Agent: Mozilla/5.0",
-                 "--connect-timeout", str(timeout), "--max-time", str(timeout + 5)],
-                capture_output=True, text=True, timeout=timeout + 10,
-            )
-            code = result.stdout.strip()
-            if code in ("200", "301", "302"):
-                # Verify it's not the geo-block page
-                check = subprocess.run(
-                    ["curl", "-s", "--proxy", f"socks5h://{proxy}", test_url,
-                     "-H", "User-Agent: Mozilla/5.0",
-                     "--connect-timeout", str(timeout), "--max-time", str(timeout + 5)],
-                    capture_output=True, text=True, timeout=timeout + 10,
-                )
-                if "Region Restricted" not in check.stdout:
-                    return f"socks5h://{proxy}"
-        except Exception:
-            continue
-    return None
-
-
-def api_request(path: str, method: str = "GET", headers: dict = None,
-                body: str = None, proxy: str = None) -> dict:
-    """Make an API request through a proxy."""
-    url = f"https://api.mainnet.euphoria.finance/{path}"
-    cmd = ["curl", "-s", "--max-time", "15"]
-
-    if proxy:
-        cmd.extend(["--proxy", proxy])
-
-    if headers:
-        for k, v in headers.items():
-            cmd.extend(["-H", f"{k}: {v}"])
-
-    if method == "POST":
-        cmd.extend(["-X", "POST"])
-    if body:
-        cmd.extend(["-d", body])
-
-    cmd.append(url)
-
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+def probe(proxy: str, test_url: str = settings.ORIGIN, timeout: float = 8.0) -> str | None:
+    """Return the proxy URL if it reaches Euphoria without a region block."""
+    url = proxy if "://" in proxy else f"socks5h://{proxy}"
     try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return {"raw": result.stdout, "error": "json_decode_failed"}
+        with httpx.Client(
+            proxy=url,
+            timeout=timeout,
+            headers={"User-Agent": settings.USER_AGENT},
+            follow_redirects=True,
+        ) as client:
+            resp = client.get(test_url)
+    except Exception:
+        return None
+    if resp.status_code != 200:
+        return None
+    if "Region Restricted" in resp.text or "403 Forbidden" in resp.text:
+        return None
+    return url
+
+
+def find_working_proxy(max_candidates: int = 40, workers: int = 12) -> str | None:
+    """Probe candidates concurrently; return the first that clears the geo-block."""
+    if settings.PROXY_URL and probe(settings.PROXY_URL):
+        return settings.PROXY_URL
+    candidates = fetch_proxies(max_candidates)
+    if not candidates:
+        return None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(probe, c): c for c in candidates}
+        for fut in concurrent.futures.as_completed(futures):
+            result = fut.result()
+            if result:
+                for other in futures:
+                    other.cancel()
+                return result
+    return None
