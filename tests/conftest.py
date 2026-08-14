@@ -9,6 +9,11 @@ def isolate_session_store(tmp_path, monkeypatch):
     monkeypatch.delenv("EUPHORIA_BOT_SIGNATURE", raising=False)
     monkeypatch.delenv("EUPHORIA_DEVICE_FINGERPRINT", raising=False)
     monkeypatch.delenv("EUPHORIA_BLOB", raising=False)
+    monkeypatch.delenv("EUPHORIA_COOKIE", raising=False)
+    monkeypatch.delenv("EUPHORIA_PRIVY_ID_TOKEN", raising=False)
+    monkeypatch.delenv("EUPHORIA_PRIVY_TOKEN", raising=False)
+    monkeypatch.delenv("EUPHORIA_PRIVY_USER_ID", raising=False)
+    monkeypatch.delenv("EUPHORIA_PRIVY_SESSION", raising=False)
     store = tmp_path / "session.json"
     monkeypatch.setenv("EUPHORIA_SESSION_STORE", str(store))
     monkeypatch.setattr("config.settings.BOT_SIGNATURE", "")

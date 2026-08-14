@@ -129,6 +129,20 @@ def test_save_strips_private_keys_and_sets_0600(tmp_path):
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
+def test_save_preserves_cookie_fields(tmp_path):
+    path = tmp_path / "session.json"
+    path.write_text(json.dumps({
+        "privy-id-token": "keep-me",
+        "privyUserId": "did:privy:keep",
+        "botSignature": "0xold",
+    }))
+    save_session_artefacts({"botSignature": "0xnew"}, store_path=path)
+    data = json.loads(path.read_text())
+    assert data["botSignature"] == "0xnew"
+    assert data["privy-id-token"] == "keep-me"
+    assert data["privyUserId"] == "did:privy:keep"
+
+
 def test_save_merges_and_does_not_write_empty_keys(tmp_path):
     path = tmp_path / "session.json"
     save_session_artefacts({"botSignature": "0xold", "blob": "keep"}, store_path=path)

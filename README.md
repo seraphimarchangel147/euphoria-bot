@@ -21,7 +21,7 @@ protocol and [docs/AUTH.md](docs/AUTH.md) for authentication.
 | Price oracle (Redstone) | Working | live ETH/BTC, staleness-guarded |
 | EIP-712 signing | Working | TakerOrder + USDM permit sign + self-recover |
 | Risk engine | Working | size / balance / open-count / daily-loss breaker |
-| Privy auth | Working | self-renewing via refresh token (docs/AUTH.md) |
+| Privy auth | Working | cookie-based (`privy-id-token` + `privy-token` + `privy-session`); refresh token mints those cookies (docs/AUTH.md) |
 | API client | Working | tRPC query/mutate, retries, typed errors |
 | Trade assembly | Working | verified end-to-end in dry run |
 | Live submission | Pass-through | `approvalPermit` signed in Python; attaches captured `botSignature` / `deviceFingerprint` / `blob` from env or `~/.euphoria/session.json`; Turnstile is still solved by you in a real browser |
@@ -36,16 +36,16 @@ python3 scripts/doctor.py # tells you exactly what is missing
 ```
 
 `scripts/doctor.py` checks dependencies, wallet key, signing roundtrip, USDM
-permit, oracle, geo-block, Privy auth, and captured session artefacts, and
-exits non-zero if the bot is not ready. It never invents Turnstile or
-fingerprint values.
+permit, oracle, geo-block, Privy cookies + `users.getProfile`, and captured
+session artefacts, and exits non-zero if the bot is not ready. It never
+invents Turnstile or fingerprint values or prints secrets.
 
 ## Usage
 
 ```bash
 python3 -m src.monitor.price_monitor   # price alerts (optional Discord webhook)
 python3 -m src.trader.auto_trader      # trade loop (DRY_RUN=1 by default)
-python3 -m pytest                      # 88 tests
+python3 -m pytest                      # 101 tests
 ```
 
 ```python

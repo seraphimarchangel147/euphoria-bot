@@ -96,19 +96,27 @@ https://api.mainnet.euphoria.finance/
 
 ### Authentication
 
-The API uses a Privy **identity token** (NOT the access token from localStorage).
+Live auth is **cookie-based**. `Authorization: Bearer <identity_token>`
+returns 401 even with a valid Privy-minted JWT.
 
-- Header: `Authorization: Bearer <identity_token>`
-- The identity token is obtained via `privy.getIdentityToken()` in the frontend
-- It's stored in-memory (Zustand store), NOT in localStorage
-- The access token from localStorage does NOT work as API auth
+Cookies on `api.mainnet.euphoria.finance` (from a logged-in Chrome request):
+
+- `privy-id-token` — identity JWT (required)
+- `privy-token` — access JWT
+- `privy-session` — `privy.euphoria.finance`
+
+`users.getProfile` is the authenticated whoami. Input is
+`{"privyUserId":"did:privy:<id>"}`, not null. See `docs/AUTH.md`.
 
 ### Known Procedures
 
 | Procedure | Method | Auth | Description |
 |-----------|--------|------|-------------|
-| `users.getTier` | GET | Yes | Get user tier/info |
-| `users.getGameState` | GET | Yes | Get game state (balance, positions) |
+| `users.getProfile` | GET | Yes | Whoami; input `{privyUserId}` |
+| `users.getCompletedSteps` | GET | Yes | Onboarding steps |
+| `notifications.getSettings` | GET | Yes | Notification prefs |
+| `wallet.topUpStatus` | GET | Yes | Top-up status |
+| `latencyProbe` | GET | Yes | Latency probe |
 | `trades.executeTrade` | Subscription | Yes | Submit a trade |
 
 ### Geo-Blocking

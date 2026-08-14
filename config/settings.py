@@ -57,6 +57,15 @@ PRIVY_CLIENT = os.environ.get("EUPHORIA_PRIVY_CLIENT", "react-auth:2.13.4")
 TOKEN_STORE = Path(
     os.environ.get("EUPHORIA_TOKEN_STORE", str(Path.home() / ".euphoria" / "tokens.json"))
 )
+# Live API auth is Cookie: privy-id-token + privy-token + privy-session.
+# Bearer 401s. These are pass-through from the user's own browser / refresh mint.
+PRIVY_ID_TOKEN = os.environ.get("EUPHORIA_PRIVY_ID_TOKEN") or os.environ.get(
+    "EUPHORIA_PRIVY_IDENTITY_TOKEN", ""
+)
+PRIVY_ACCESS_TOKEN = os.environ.get("EUPHORIA_PRIVY_TOKEN", "")
+PRIVY_COOKIE = os.environ.get("EUPHORIA_COOKIE", "")
+PRIVY_USER_ID = os.environ.get("EUPHORIA_PRIVY_USER_ID", "")
+PRIVY_SESSION = os.environ.get("EUPHORIA_PRIVY_SESSION", "privy.euphoria.finance")
 
 # --- Browser session artefacts (pass-through only) -------------------------
 # Captured from the user's own logged-in Euphoria tab after they solve

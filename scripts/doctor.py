@@ -3,10 +3,10 @@
 
     python3 scripts/doctor.py
 
-Checks dependencies, wallet, signing, oracle, geo-block, Privy auth,
-USDM permit readiness, and whether captured session artefacts
-(botSignature / deviceFingerprint / blob) are present — it never invents
-them. Exits non-zero if anything required for live trading is missing.
+Checks dependencies, wallet, signing, oracle, geo-block, Privy cookie
+auth (users.getProfile), USDM permit readiness, and whether captured
+session artefacts are present — it never invents them or prints secrets.
+Exits non-zero if anything required for live trading is missing.
 """
 from __future__ import annotations
 
@@ -116,10 +116,32 @@ def check_auth() -> None:
         report(FAIL, "Privy credentials", str(exc).split(".")[0])
         return
     try:
-        token = auth.identity_token()
-        report(OK, "Privy identity token", f"{token[:16]}... (len {len(token)})")
+        status = auth.cookie_status()
     except PrivyAuthError as exc:
-        report(FAIL, "Privy token refresh", str(exc)[:160])
+        report(FAIL, "API cookies", str(exc)[:160])
+        return
+    if status:
+        detail = ", ".join(f"{name} {n} chars" for name, n in status)
+        report(OK, "API cookies", detail)
+    else:
+        report(FAIL, "API cookies", "privy-id-token missing — see docs/AUTH.md")
+        return
+    uid = auth.privy_user_id()
+    if uid:
+        shown = uid[:22] + "..." if len(uid) > 22 else uid
+        report(OK, "privyUserId", shown)
+    else:
+        report(WARN, "privyUserId", "not set — users.getProfile needs {privyUserId}")
+    try:
+        from src.trader.api import EuphoriaAPI
+        api = EuphoriaAPI(auth)
+        try:
+            api.whoami()
+        finally:
+            api.close()
+        report(OK, "users.getProfile", "authenticated")
+    except Exception as exc:
+        report(FAIL, "users.getProfile", str(exc)[:160])
 
 
 def check_session() -> None:

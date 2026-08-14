@@ -168,14 +168,26 @@ def save_session_artefacts(
     *,
     store_path: Path | None = None,
 ) -> Path:
-    """Write artefact keys only (0600). Strips private keys and other secrets."""
+    """Merge artefact keys into session.json (0600).
+
+    Preserves cookie / privyUserId fields already in the file. Strips
+    private keys and other wallet secrets. Does not scrape a browser.
+    """
     path = resolve_store_path(store_path)
-    existing = _read_file(path)
+    raw: dict[str, Any] = {}
+    try:
+        loaded = json.loads(path.read_text())
+        if isinstance(loaded, dict):
+            raw = loaded
+    except Exception:
+        raw = {}
+    for key in list(raw):
+        if _is_forbidden(str(key)):
+            raw.pop(key, None)
     incoming = _artefacts_from_mapping(data)
-    out = {k: v for k, v in existing.items() if k in ARTEFACT_KEYS and v}
-    out.update(incoming)
+    raw.update(incoming)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(out, indent=2) + "\n")
+    path.write_text(json.dumps(raw, indent=2) + "\n")
     try:
         os.chmod(path, 0o600)
     except OSError:
