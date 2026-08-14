@@ -1,4 +1,6 @@
-/* Helper for a normal logged-in Euphoria tab: session cookies, page prices, overlay. */
+/* Helper for a normal logged-in Euphoria tab: session cookies, page prices, overlay.
+   host_permissions cover 127.0.0.1 — content scripts on https://euphoria.finance
+   must not fetch the control room themselves. */
 const DEFAULT_PORT = 8765;
 const COOKIE_NAMES = new Set(["privy-token", "privy-id-token", "privy-session"]);
 
@@ -9,28 +11,33 @@ function controlBase() {
   });
 }
 
-async function post(path, body) {
+async function helper(path, { method = "GET", body } = {}) {
   const base = await controlBase();
   try {
-    const resp = await fetch(base + path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {}),
-    });
-    return await resp.json();
+    const opts = { method, headers: { "Content-Type": "application/json" } };
+    if (method !== "GET") opts.body = JSON.stringify(body || {});
+    const resp = await fetch(base + path, opts);
+    return { ok: true, data: await resp.json() };
   } catch {
     return { ok: false, error: "offline" };
   }
 }
 
+async function post(path, body) {
+  const out = await helper(path, { method: "POST", body });
+  return out.ok ? out.data : { ok: false, error: "offline" };
+}
+
 async function get(path) {
-  const base = await controlBase();
-  try {
-    const resp = await fetch(base + path, { method: "GET" });
-    return await resp.json();
-  } catch {
-    return null;
-  }
+  const out = await helper(path, { method: "GET" });
+  return out.ok ? out.data : null;
+}
+
+async function controlCommand(path, body) {
+  /* /start /stop /mode already return status() — still re-fetch /status. */
+  await helper(path, { method: "POST", body: body || {} });
+  const status = await helper("/status");
+  return status;
 }
 
 async function collectCookies() {
@@ -60,6 +67,20 @@ async function pushSession(extra) {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     if (!msg || !msg.type) return;
+    if (msg.type === "control") {
+      const path = msg.path || "/status";
+      const method = String(msg.method || "GET").toUpperCase();
+      if (method === "GET") {
+        sendResponse(await helper(path));
+        return;
+      }
+      if (path === "/start" || path === "/stop" || path === "/mode") {
+        sendResponse(await controlCommand(path, msg.body));
+        return;
+      }
+      sendResponse(await helper(path, { method, body: msg.body }));
+      return;
+    }
     if (msg.type === "quotes") {
       const quotes = msg.quotes || [];
       if (quotes.length) await post("/quotes", quotes);
@@ -83,19 +104,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return;
     }
     if (msg.type === "status") {
-      sendResponse({ status: await get("/status"), think: await get("/think") });
+      sendResponse(await helper("/status"));
       return;
     }
     if (msg.type === "start") {
-      sendResponse(await post("/start"));
+      sendResponse(await controlCommand("/start"));
       return;
     }
     if (msg.type === "stop") {
-      sendResponse(await post("/stop"));
+      sendResponse(await controlCommand("/stop"));
       return;
     }
     if (msg.type === "mode") {
-      sendResponse(await post("/mode", { mode: msg.mode || "manual" }));
+      sendResponse(await controlCommand("/mode", { mode: msg.mode || "manual" }));
       return;
     }
   })();
@@ -104,7 +125,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 chrome.runtime.onConnect.addListener((p) => {
   if (p.name !== "euphoria-sync") return;
-  /* Port from the trade tab keeps this worker alive while the tab is open. */
+  const iv = setInterval(() => {
+    try {
+      p.postMessage({ type: "ping" });
+    } catch {
+      /* port closed */
+    }
+  }, 20000);
+  p.onDisconnect.addListener(() => clearInterval(iv));
 });
 
 chrome.cookies.onChanged.addListener((change) => {

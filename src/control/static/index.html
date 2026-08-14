@@ -187,7 +187,10 @@
       $("ethSrc").textContent = fmtSrc(q.ETH);
       $("btcSrc").textContent = fmtSrc(q.BTC);
       const ext = status.extension || {};
-      $("extBadge").textContent = ext.connected ? "tab connected" : "tab offline";
+      let extLabel = "tab offline";
+      if (ext.connected) extLabel = "tab connected";
+      else if (ext.session_only) extLabel = "session only / redstone";
+      $("extBadge").textContent = extLabel;
       $("extBadge").className = "badge " + (ext.connected ? "on" : "off");
       $("err").textContent = status.last_error || "";
       const s = status.session || {};
@@ -203,7 +206,7 @@
       const conf = Number(t.confidence || 0);
       $("conf").textContent = "confidence " + conf.toFixed(2);
       $("confBar").style.width = Math.round(conf * 100) + "%";
-      const standAside = t.action === "sit" || !t.pick || t.suggested === "no trade";
+      const standAside = t.stand_aside != null ? !!t.stand_aside : !t.pick;
       const why = t.sit_reason || t.why || t.hint || t.reason || "waiting on ticks";
       const setup = (t.setup && t.setup !== "none") ? t.setup : "none";
       const action = t.action || (standAside ? "sit" : "tap");

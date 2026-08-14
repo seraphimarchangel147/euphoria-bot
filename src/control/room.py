@@ -12,6 +12,7 @@ from src.analytics.lesson import GradeBook
 from src.analytics.setups import SetupMemory
 from src.analytics.signal import Signal, TickBuffer, compute_signal
 from src.auth.session import SessionState, apply_payload, load_session, persist_session
+from src.control.overlay_rules import stand_aside
 
 log = logging.getLogger("euphoria.control")
 
@@ -78,6 +79,7 @@ class ControlRoom:
         self._seq = 0
         self._ext_seen: float | None = None
         self._ext_quote_source: str | None = None
+        self._session_seen: float | None = None
 
     # -- commands -----------------------------------------------------------
     def start(self) -> dict[str, Any]:
@@ -160,7 +162,8 @@ class ControlRoom:
             view = self.session.public_view()
             if changed:
                 persist_session(self.session, session_path=self.session_path, token_path=self.token_path)
-            self._ext_seen = time.time()
+            # Session ping keeps the helper handshake; it is not a tab quote.
+            self._session_seen = time.time()
             self._notify_unlocked()
         log.info(
             "session ingest: cookies=%s privyUserId=%s artefacts=%s quotes=%d",
@@ -194,9 +197,20 @@ class ControlRoom:
     def payload(self, sig: Signal | None = None) -> dict[str, Any]:
         sig = sig if sig is not None else self.last_signal
         if sig is None:
-            return {"suggested": "no trade", "grade": self.scoreboard.to_dict()}
+            body: dict[str, Any] = {"suggested": "no trade", "pick": None, "grade": self.scoreboard.to_dict()}
+            body["stand_aside"] = True
+            last = self.ticks.latest("ETH") or self.ticks.latest("BTC")
+            if last:
+                body["price"] = last.price
+                body["asset"] = last.symbol
+            return body
         body = sig.to_dict()
         body["grade"] = self.scoreboard.to_dict()
+        body["stand_aside"] = stand_aside(body)
+        if not body.get("price"):
+            last = self.ticks.latest(body.get("asset") or "ETH") or self.ticks.latest("ETH")
+            if last:
+                body["price"] = last.price
         return body
 
     def think_payload(self, now: float | None = None) -> dict[str, Any]:
@@ -205,10 +219,7 @@ class ControlRoom:
     def status(self) -> dict[str, Any]:
         with self._lock:
             sig = self.last_signal
-            think = None
-            if sig is not None:
-                think = sig.to_dict()
-                think["grade"] = self.scoreboard.to_dict()
+            think = self.payload(sig) if sig is not None else None
             return {
                 "running": self.running,
                 "mode": self.mode,
@@ -240,14 +251,25 @@ class ControlRoom:
                 self._cond.wait(remaining)
             return self._seq
 
+    def _tab_quotes_fresh(self, now: float) -> bool:
+        src = self._ext_quote_source
+        seen = self._ext_seen
+        return bool(src in EXTENSION_SOURCES and seen is not None and now - seen <= EXTENSION_STALE_S)
+
+    def _session_fresh(self, now: float) -> bool:
+        seen = self._session_seen
+        return bool(seen is not None and now - seen <= EXTENSION_STALE_S)
+
     def _extension_view_unlocked(self, now: float | None = None) -> dict[str, Any]:
         now = time.time() if now is None else now
-        seen = self._ext_seen
+        tab = self._tab_quotes_fresh(now)
         sess = self.session.public_view()
         has_cookies = bool(sess.get("has_cookies"))
         return {
-            "connected": bool(seen is not None and now - seen <= EXTENSION_STALE_S),
-            "last_seen": seen,
+            "connected": tab,
+            "session_only": bool(self._session_fresh(now) and not tab),
+            "last_seen": self._ext_seen,
+            "last_session": self._session_seen,
             "last_quote_source": self._ext_quote_source,
             "has_cookies": has_cookies,
             "has_session": bool(has_cookies or sess.get("privy_user_id_set")),

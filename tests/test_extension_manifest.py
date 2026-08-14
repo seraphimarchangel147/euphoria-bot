@@ -53,13 +53,58 @@ def test_extension_docs_the_three_jobs():
     content = (ROOT / "content.js").read_text()
     assert "ebo-tf" in content
     assert "ebo-grade" in content
+    assert "ebo-grid" in content
+    assert "grid hooked" in content
+    assert "grid fallback" in content
+    assert "no canvas" in content
+    assert "helper offline" in content
     assert "indicator" in content
     assert "click()" not in content
-    assert "EventSource" in content
-    assert "/events" in content
     assert "ebo-manual" in content
     assert "ebo-auto" in content
     assert "euphoria-sync" in content
+    assert 'type: "control"' in content
+    assert 'path: "/status"' in content
+    assert "await fetch(" not in content
+    assert "fetch(base" not in content
+    assert "new EventSource" not in content
     bg = (ROOT / "background.js").read_text()
     assert 'msg.type === "mode"' in bg
     assert "euphoria-sync" in bg
+    assert "async function controlCommand" in bg
+    assert 'helper("/status")' in bg
+
+
+def test_start_stop_handlers_request_start_then_status():
+    bg = (ROOT / "background.js").read_text()
+    start = bg.index("async function controlCommand")
+    chunk = bg[start:start + 500]
+    assert "helper(path" in chunk
+    assert 'method: "POST"' in chunk
+    assert 'helper("/status")' in chunk
+    content = (ROOT / "content.js").read_text()
+    cmd = content.index("async function command")
+    body = content[cmd:cmd + 450]
+    assert 'type: "control"' in body
+    assert "POST" in body
+    assert 'path: "/status"' in body
+    assert "paintSnapshot" in body
+
+
+def test_overlay_fallback_and_pink_without_pick():
+    inject = (ROOT / "inject.js").read_text()
+    assert "function fallbackSnap" in inject
+    assert "function fallbackCellBounds" in inject
+    assert "ETH_DPL = 0.5" in inject
+    assert "BTC_DPL = 10" in inject
+    assert "SQUARE_MS = 5000" in inject
+    assert "function standAsideFromThink" in inject
+    aside = inject[inject.index("function standAsideFromThink"):inject.index("function standAsideFromThink") + 420]
+    assert "lesson" not in aside
+    assert "Always draw pink" in inject
+    assert "grid-hook" in inject
+    assert "pointer-events" in inject
+    css = (ROOT / "overlay.css").read_text()
+    assert "2147483645" in css
+    assert "overflow: visible" in css
+    assert "pointer-events: none" in css

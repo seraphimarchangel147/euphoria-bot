@@ -54,11 +54,10 @@
   color: #3dd68c;
 }
 #euphoria-helper-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
+  position: fixed;
+  z-index: 2147483645;
   pointer-events: none;
-  overflow: hidden;
+  overflow: visible;
 }
 #euphoria-helper-layer canvas {
   position: absolute;

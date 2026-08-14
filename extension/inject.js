@@ -6,20 +6,32 @@
   const LAYER_ID = "euphoria-helper-layer";
 
   let lastThink = null;
+  let lastQuotes = null;
   let lastPrice = null;
+  let lastSymbol = "ETH";
   let chart = null;
   let gridState = null;
+  let tradeCanvas = null;
   let host = null;
   let layer = null;
   let tileCanvas = null;
   let labelEl = null;
   let lastGridEmit = 0;
   let lastGridKey = "";
+  let lastHook = "";
+  let lastHookEmit = 0;
   let tfEl = null;
   let reasonEl = null;
   let gradeEl = null;
   let rafId = 0;
   const tileAnim = new Map();
+
+  /* Keep in lockstep with src/control/grid_map.py */
+  const ETH_DPL = 0.5;
+  const BTC_DPL = 10;
+  const SQUARE_MS = 5000;
+  const FALLBACK_ROWS = 24;
+  const FALLBACK_COLS = 12;
 
   function emit(type, payload) {
     window.postMessage({ source: SOURCE, type, payload }, "*");
@@ -85,7 +97,10 @@
     if (!quotes.length) return;
     emit("quotes", quotes);
     const eth = quotes.find((q) => q.symbol === "ETH") || quotes[0];
-    if (eth) lastPrice = eth.price;
+    if (eth) {
+      lastPrice = eth.price;
+      lastSymbol = eth.symbol || lastSymbol;
+    }
   }
 
   function hookPricesObject(target) {
@@ -249,18 +264,85 @@
   function findHost() {
     const canvases = findCanvases();
     if (!canvases.length) return null;
-    const canvas = canvases[0];
-    let el = canvas.parentElement;
-    let best = canvas.parentElement;
-    while (el && el !== document.body) {
-      const cls = String(el.className || "");
-      if (cls.includes("relative") && (cls.includes("size-full") || cls.includes("min-h-0"))) {
-        return el;
-      }
-      if (el.childElementCount >= 1 && el.getBoundingClientRect().height >= 180) best = el;
-      el = el.parentElement;
-    }
-    return best;
+    return canvases[0];
+  }
+
+  function dollarsPerLine(symbol) {
+    return String(symbol || "ETH").toUpperCase() === "BTC" ? BTC_DPL : ETH_DPL;
+  }
+
+  function fallbackSnap(cssW, cssH, price, symbol, nowMs) {
+    const dpl = dollarsPerLine(symbol);
+    const now = nowMs || Date.now();
+    const curX = Math.floor(now / SQUARE_MS) + 1;
+    const curY = Math.floor(price / dpl);
+    return {
+      mode: "fallback",
+      offset: { x: 0, y: 0 },
+      zoom: 1,
+      w: cssW,
+      h: cssH,
+      squareDuration: SQUARE_MS,
+      dpl,
+      gridSize: FALLBACK_ROWS,
+      now,
+      cellSize: cssH / FALLBACK_ROWS,
+      cellW: cssW / FALLBACK_COLS,
+      cellH: cssH / FALLBACK_ROWS,
+      curX,
+      curY,
+    };
+  }
+
+  function fallbackCellBounds(snap, gx, gy) {
+    const cellW = snap.cellW || snap.w / FALLBACK_COLS;
+    const cellH = snap.cellH || snap.h / FALLBACK_ROWS;
+    const left = snap.w / 2 + (gx - snap.curX) * cellW - cellW / 2;
+    const top = snap.h / 2 - (gy - snap.curY) * cellH - cellH / 2;
+    return { left, top, right: left + cellW, bottom: top + cellH };
+  }
+
+  function emitHook(hook, force) {
+    const now = Date.now();
+    if (!force && hook === lastHook && now - lastHookEmit < 1500) return;
+    lastHook = hook;
+    lastHookEmit = now;
+    emit("grid-hook", { hook });
+  }
+
+  function standAsideFromThink(think) {
+    const pick = think && think.pick;
+    if (pick && pick !== "no trade") return false;
+    const sug = think && think.suggested;
+    if (sug && sug !== "no trade") return false;
+    if (think && think.stand_aside != null) return !!think.stand_aside;
+    return true;
+  }
+
+  function quotePrice(quotes, symbol) {
+    if (!quotes || typeof quotes !== "object") return null;
+    const row = quotes[symbol] || quotes[String(symbol).toLowerCase()];
+    if (row == null) return null;
+    const p = Number(typeof row === "object" ? row.price : row);
+    return p > 0 ? p : null;
+  }
+
+  function resolveSymbol(think, quotes) {
+    if (think && think.asset) return String(think.asset).toUpperCase();
+    if (quotes && (quotes.ETH || quotes.eth)) return "ETH";
+    if (quotes && (quotes.BTC || quotes.btc)) return "BTC";
+    return lastSymbol || "ETH";
+  }
+
+  function resolvePrice(gs, think, quotes) {
+    const feed = livePrice(gs);
+    if (feed) return feed;
+    const fromThink = think && Number(think.price || think.last_price);
+    if (fromThink > 0) return fromThink;
+    const symbol = resolveSymbol(think, quotes);
+    const fromQuotes = quotePrice(quotes, symbol) || quotePrice(quotes, "ETH") || quotePrice(quotes, "BTC");
+    if (fromQuotes) return fromQuotes;
+    return lastPrice;
   }
 
   function snapshotState(gs) {
@@ -287,6 +369,9 @@
   }
 
   function cellBounds(gs, snap, gx, gy) {
+    if (!snap || snap.mode === "fallback" || !gs) {
+      return fallbackCellBounds(snap, gx, gy);
+    }
     const coords = gs.coords;
     if (coords && typeof coords.getCellScreenBounds === "function") {
       try {
@@ -307,20 +392,29 @@
   }
 
   function ensureLayer() {
-    const next = findHost();
-    if (!next) return null;
-    if (host !== next) {
-      layer?.remove();
-      layer = null;
-      host = next;
-      const style = getComputedStyle(host);
-      if (style.position === "static") host.style.position = "relative";
+    const canvas = findHost();
+    if (!canvas) {
+      emitHook("no-canvas");
+      if (layer) {
+        layer.remove();
+        layer = null;
+      }
+      tradeCanvas = null;
+      host = null;
+      return null;
     }
-    if (!layer) {
+    tradeCanvas = canvas;
+    host = canvas.parentElement || canvas;
+    if (!layer || !layer.isConnected) {
       layer = document.createElement("div");
       layer.id = LAYER_ID;
       layer.setAttribute("aria-hidden", "true");
+      layer.style.position = "fixed";
+      layer.style.pointerEvents = "none";
+      layer.style.zIndex = "2147483645";
+      layer.style.overflow = "visible";
       tileCanvas = document.createElement("canvas");
+      tileCanvas.style.pointerEvents = "none";
       labelEl = document.createElement("div");
       labelEl.id = "euphoria-helper-tile-label";
       tfEl = document.createElement("div");
@@ -334,14 +428,18 @@
       layer.appendChild(tfEl);
       layer.appendChild(reasonEl);
       layer.appendChild(gradeEl);
-      host.appendChild(layer);
+      (document.documentElement || document.body).appendChild(layer);
     }
     return layer;
   }
 
   function sizeCanvas() {
-    if (!layer || !tileCanvas || !host) return { sx: 1, sy: 1, cssW: 0, cssH: 0 };
-    const r = host.getBoundingClientRect();
+    if (!layer || !tileCanvas || !tradeCanvas) return { sx: 1, sy: 1, cssW: 0, cssH: 0 };
+    const r = tradeCanvas.getBoundingClientRect();
+    layer.style.left = r.left + "px";
+    layer.style.top = r.top + "px";
+    layer.style.width = r.width + "px";
+    layer.style.height = r.height + "px";
     const dpr = window.devicePixelRatio || 1;
     const cssW = Math.max(1, r.width);
     const cssH = Math.max(1, r.height);
@@ -378,16 +476,17 @@
     const gx = Math.floor(snap.now / snap.squareDuration);
     const gy = Math.floor(price / snap.dpl);
     const next = gx + 1;
+    const nearby = [
+      { x: next, y: gy + 1, role: "look", side: "up", hint: "above" },
+      { x: next, y: gy - 1, role: "look", side: "down", hint: "below" },
+    ];
     const raw = (think && (think.candidates || think.looking_at)) || [];
-    let looking = [];
-    if (Array.isArray(raw) && raw.length) {
-      looking = raw.map((item) => tileFromPayload(item, next, gy)).filter(Boolean);
-    }
-    if (!looking.length) {
-      looking = [
-        { x: next, y: gy + 1, role: "look", side: "up", hint: "" },
-        { x: next, y: gy - 1, role: "look", side: "down", hint: "" },
-      ];
+    const extra = Array.isArray(raw)
+      ? raw.map((item) => tileFromPayload(item, next, gy)).filter(Boolean)
+      : [];
+    const looking = nearby.slice();
+    for (const tile of extra) {
+      if (!looking.some((row) => row.x === tile.x && row.y === tile.y)) looking.push(tile);
     }
     let selected = null;
     const pick = think && think.pick;
@@ -428,16 +527,31 @@
       .join(" ");
   }
 
+  function paintTileCaption(ctx, dest, tile, think, kind) {
+    const tf = (think && think.tf_lean) || "";
+    const why = String((think && (think.why || think.hint)) || tile.hint || tile.side || "").slice(0, 28);
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = kind === "sel" ? "#c9dcff" : "#ffe0f4";
+    ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+    ctx.textBaseline = "top";
+    const line1 = (tile.side || "") + (tf ? " · " + tf : "");
+    ctx.fillText(line1, dest.x + 4, dest.y + 3);
+    if (why && dest.h > 22) ctx.fillText(why, dest.x + 4, dest.y + dest.h - 13);
+    ctx.restore();
+  }
+
   function draw() {
     if (!location.pathname.startsWith("/trade") && location.pathname !== "/trade") {
       layer?.remove();
       layer = null;
+      emitHook("no-canvas");
       return;
     }
     if (!gridState) discoverChart();
     if (!ensureLayer() || !tileCanvas) return;
     const gs = gridState || chart?.gridState;
-    const snap = snapshotState(gs);
+    const reactSnap = snapshotState(gs);
     const { dpr, cssW, cssH } = sizeCanvas();
     const ctx = tileCanvas.getContext("2d");
     if (!ctx) return;
@@ -447,29 +561,43 @@
     if (tfEl) tfEl.style.display = "none";
     if (reasonEl) reasonEl.style.display = "none";
     if (gradeEl) gradeEl.style.display = "none";
-    if (!snap) return;
-
-    const scaleX = cssW / snap.w;
-    const scaleY = cssH / snap.h;
-    const price = livePrice(gs);
-    if (!price) return;
 
     const think = lastThink || {};
-    const { looking, selected } = tilesForThink(think, snap, price);
+    const symbol = resolveSymbol(think, lastQuotes);
+    const price = resolvePrice(gs, think, lastQuotes);
+    if (!price) {
+      emitHook(reactSnap ? "hooked" : "fallback");
+      return;
+    }
+
+    let snap = reactSnap;
+    let hook = reactSnap ? "hooked" : "fallback";
+    if (!snap) snap = fallbackSnap(cssW, cssH, price, symbol);
+
+    let { looking, selected } = tilesForThink(think, snap, price);
     const nowMs = performance.now();
     const pulse = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(nowMs / 520));
     const seen = new Set();
 
-    const targetBox = (tile) => {
-      const b = cellBounds(gs, snap, tile.x, tile.y);
-      const x = b.left * scaleX;
-      const y = b.top * scaleY;
-      const w = (b.right - b.left) * scaleX;
-      const h = (b.bottom - b.top) * scaleY;
+    const targetBox = (tile, useSnap) => {
+      const b = cellBounds(gs, useSnap || snap, tile.x, tile.y);
+      const sx = cssW / (useSnap || snap).w;
+      const sy = cssH / (useSnap || snap).h;
+      const x = b.left * sx;
+      const y = b.top * sy;
+      const w = (b.right - b.left) * sx;
+      const h = (b.bottom - b.top) * sy;
       if (w < 4 || h < 4) return null;
       if (x + w < 0 || y + h < 0 || x > cssW || y > cssH) return null;
       return { x, y, w, h };
     };
+
+    if (hook === "hooked" && !looking.some((tile) => targetBox(tile))) {
+      snap = fallbackSnap(cssW, cssH, price, symbol);
+      hook = "fallback";
+      ({ looking, selected } = tilesForThink(think, snap, price));
+    }
+    emitHook(hook);
 
     const paint = (tile, kind) => {
       const dest = targetBox(tile);
@@ -508,9 +636,12 @@
       ctx.fill();
       ctx.stroke();
       ctx.restore();
-      return { x: anim.x, y: anim.y, w: anim.w, h: anim.h };
+      const painted = { x: anim.x, y: anim.y, w: anim.w, h: anim.h };
+      paintTileCaption(ctx, painted, tile, think, kind);
+      return painted;
     };
 
+    /* Always pink on nearby above/below — do not wait for a pick or hide on fade/waiting. */
     for (const tile of looking) {
       if (selected && tile.x === selected.x && tile.y === selected.y) continue;
       paint(tile, "look");
@@ -531,10 +662,8 @@
     const why = think.why || (think.hint && think.hint !== "no trade" ? think.hint : "") ||
       (think.reason || "").split("→").pop().trim();
     const setupName = think.setup && think.setup !== "none" ? think.setup : "";
-    const action = think.action || (think.suggested === "no trade" || !selected ? "sit" : "tap");
-    const standAside = action === "sit" || !selected || think.suggested === "no trade" || think.lesson === "chop" ||
-      think.lesson === "quiet" || think.lesson === "waiting" || think.lesson === "fade" ||
-      think.lesson === "faded" || think.lesson === "weak" || think.lesson === "late_pink";
+    const action = think.action || (selected ? "tap" : "sit");
+    const standAside = standAsideFromThink(think);
     const setupLine = setupName ? (setupName + " · " + action) : "";
     const liveLine = standAside
       ? ((setupLine ? setupLine + " — " : "no trade — ") + (think.sit_reason || why || "standing aside"))
@@ -605,7 +734,10 @@
   window.addEventListener("message", (ev) => {
     const data = ev.data;
     if (!data || data.source !== SOURCE) return;
-    if (data.type === "think") lastThink = data.payload || null;
+    if (data.type === "think") {
+      lastThink = data.payload || null;
+      if (data.quotes) lastQuotes = data.quotes;
+    }
   });
 
   function scrapeDom() {

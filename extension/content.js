@@ -1,13 +1,12 @@
 /* Content script: euphoria.finance only. Injects the page hook + /trade overlay.
-   Talks to the local control room directly so a sleeping service worker
-   does not stall start/stop/mode or the live read. */
+   All control-room I/O goes through the background service worker — a page
+   fetch() from https://euphoria.finance to 127.0.0.1 is often blocked. */
 const SOURCE = "__euphoria_bridge";
-const DEFAULT_PORT = 8765;
 let quoteBuffer = [];
 let flushTimer = null;
-let eventSource = null;
 let pollTimer = null;
 let port = null;
+let lastGridHook = "no canvas";
 
 function injectPageHook() {
   const src = chrome.runtime.getURL("inject.js");
@@ -39,26 +38,50 @@ function findPrivyUserId() {
   return "";
 }
 
-async function controlBase() {
-  const s = await chrome.storage.local.get(["controlPort"]);
-  return `http://127.0.0.1:${Number(s.controlPort) || DEFAULT_PORT}`;
+function viaWorker(msg) {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(msg, (resp) => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, error: "offline" });
+          return;
+        }
+        resolve(resp == null ? { ok: false, error: "offline" } : resp);
+      });
+    } catch {
+      resolve({ ok: false, error: "offline" });
+    }
+  });
 }
 
-async function api(method, path, body) {
-  const base = await controlBase();
-  const opts = { method, headers: { "Content-Type": "application/json" } };
-  if (body !== undefined) opts.body = JSON.stringify(body);
-  const resp = await fetch(base + path, opts);
-  return resp.json();
+function unwrapStatus(resp) {
+  if (!resp) return null;
+  if (resp.error === "offline") return null;
+  if (resp.data && typeof resp.data === "object" && ("running" in resp.data || "think" in resp.data || "mode" in resp.data)) {
+    return resp.data;
+  }
+  if (resp.running != null || resp.think || resp.mode) return resp;
+  if (resp.ok === false) return null;
+  return null;
 }
 
 function flushQuotes() {
   if (!quoteBuffer.length) return;
   const quotes = quoteBuffer;
   quoteBuffer = [];
-  api("POST", "/quotes", quotes).catch(() => {
-    chrome.runtime.sendMessage({ type: "quotes", quotes });
-  });
+  viaWorker({ type: "quotes", quotes });
+}
+
+function hookLabel(hook) {
+  if (hook === "hooked" || hook === "grid hooked") return "grid hooked";
+  if (hook === "fallback" || hook === "grid fallback") return "grid fallback";
+  return "no canvas";
+}
+
+function paintGridHook(hook) {
+  lastGridHook = hookLabel(hook);
+  const el = document.getElementById("ebo-grid");
+  if (el) el.textContent = lastGridHook;
 }
 
 window.addEventListener("message", (ev) => {
@@ -74,16 +97,19 @@ window.addEventListener("message", (ev) => {
     }
   }
   if (data.type === "artefacts" && data.payload) {
-    chrome.runtime.sendMessage({ type: "artefacts", artefacts: data.payload });
+    viaWorker({ type: "artefacts", artefacts: data.payload });
   }
   if (data.type === "grid" && data.payload) {
-    chrome.runtime.sendMessage({ type: "session", grid: data.payload });
+    viaWorker({ type: "session", grid: data.payload });
+  }
+  if (data.type === "grid-hook" && data.payload) {
+    paintGridHook(data.payload.hook || data.payload);
   }
 });
 
 function sendSession() {
   const privyUserId = findPrivyUserId();
-  chrome.runtime.sendMessage({ type: "session", privyUserId });
+  viaWorker({ type: "session", privyUserId });
 }
 
 function isTradePage() {
@@ -101,6 +127,18 @@ function keepWorkerAwake() {
   } catch {
     port = null;
   }
+}
+
+async function command(path, body) {
+  await viaWorker({ type: "control", path, method: "POST", body: body || {} });
+  const status = await viaWorker({ type: "control", path: "/status", method: "GET" });
+  const snap = unwrapStatus(status);
+  paintSnapshot(snap);
+}
+
+async function refreshStatus() {
+  const status = await viaWorker({ type: "control", path: "/status", method: "GET" });
+  paintSnapshot(unwrapStatus(status));
 }
 
 function ensureOverlay() {
@@ -127,29 +165,27 @@ function ensureOverlay() {
       <button type="button" id="ebo-manual">Manual</button>
       <button type="button" id="ebo-auto">Auto</button>
     </div>
+    <div id="ebo-grid" class="ebo-meta">${lastGridHook}</div>
     <div id="ebo-note" class="ebo-meta">tiles on the grid · you tap</div>
   `;
   document.documentElement.appendChild(root);
-  const command = (method, path, body) => {
-    api(method, path, body).then(paintSnapshot).catch(() => {
-      const type = path.replace("/", "");
-      chrome.runtime.sendMessage({ type, mode: body && body.mode }, paintSnapshot);
-    });
-  };
-  document.getElementById("ebo-start").addEventListener("click", () => command("POST", "/start", {}));
-  document.getElementById("ebo-stop").addEventListener("click", () => command("POST", "/stop", {}));
-  document.getElementById("ebo-manual").addEventListener("click", () => command("POST", "/mode", { mode: "manual" }));
-  document.getElementById("ebo-auto").addEventListener("click", () => command("POST", "/mode", { mode: "auto" }));
+  document.getElementById("ebo-start").addEventListener("click", () => command("/start", {}));
+  document.getElementById("ebo-stop").addEventListener("click", () => command("/stop", {}));
+  document.getElementById("ebo-manual").addEventListener("click", () => command("/mode", { mode: "manual" }));
+  document.getElementById("ebo-auto").addEventListener("click", () => command("/mode", { mode: "auto" }));
 }
 
 function paintSnapshot(st) {
   const root = document.getElementById("euphoria-bot-overlay");
   if (!root) return;
+  paintGridHook(lastGridHook);
   if (!st || st.error === "offline" || (st.ok === false && !st.mode && st.running == null)) {
     document.getElementById("ebo-hint").textContent = "helper offline — start python -m src.ui";
     const link = document.getElementById("ebo-link");
-    if (link) link.textContent = "offline";
-    window.postMessage({ source: SOURCE, type: "think", payload: null }, "*");
+    if (link) link.textContent = "helper offline";
+    const runEl = document.getElementById("ebo-run");
+    if (runEl) runEl.textContent = "stopped";
+    window.postMessage({ source: SOURCE, type: "think", payload: null, quotes: {} }, "*");
     return;
   }
   const th = st.think || {};
@@ -168,9 +204,8 @@ function paintSnapshot(st) {
   biasEl.className = "ebo-bias " + bias;
   document.getElementById("ebo-conf").textContent =
     "confidence " + Number(th.confidence || 0).toFixed(2);
-  const sug = th.suggested;
-  const standAside = th.action === "sit" || !th.pick || sug === "no trade";
-  const hint = th.sit_reason || th.why || th.hint || (sug && sug.hint) || th.reason || "waiting on ticks";
+  const standAside = th.stand_aside != null ? !!th.stand_aside : !th.pick;
+  const hint = th.sit_reason || th.why || th.hint || (th.suggested && th.suggested.hint) || th.reason || "waiting on ticks";
   const setup = th.setup && th.setup !== "none" ? th.setup + " · " + (th.action || (standAside ? "sit" : "tap")) : "";
   document.getElementById("ebo-hint").textContent = standAside
     ? ((setup ? setup + " — " : "no trade — ") + hint)
@@ -191,51 +226,14 @@ function paintSnapshot(st) {
     st.mode === "manual"
       ? "indicator — you tap · last window grades the call"
       : (st.dry_run ? "auto dry-run — will not live-submit" : "auto live — still needs the three artefacts");
-  window.postMessage({ source: SOURCE, type: "think", payload: th }, "*");
-}
-
-function stopEvents() {
-  if (eventSource) {
-    eventSource.close();
-    eventSource = null;
-  }
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
+  window.postMessage({ source: SOURCE, type: "think", payload: th, quotes: st.quotes || {} }, "*");
 }
 
 function startPoll() {
   if (pollTimer) return;
   pollTimer = setInterval(() => {
-    api("GET", "/status").then(paintSnapshot).catch(() => paintSnapshot(null));
-  }, 2000);
-}
-
-async function connectEvents() {
-  if (!isTradePage()) return;
-  stopEvents();
-  const base = await controlBase();
-  try {
-    eventSource = new EventSource(base + "/events");
-    eventSource.addEventListener("state", (ev) => {
-      try {
-        paintSnapshot(JSON.parse(ev.data));
-      } catch {
-        /* ignore */
-      }
-    });
-    eventSource.onerror = () => {
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-      startPoll();
-      setTimeout(connectEvents, 3000);
-    };
-  } catch {
-    startPoll();
-  }
+    refreshStatus();
+  }, 1500);
 }
 
 injectPageHook();
@@ -243,8 +241,8 @@ keepWorkerAwake();
 sendSession();
 setInterval(sendSession, 15000);
 ensureOverlay();
-connectEvents();
-api("GET", "/status").then(paintSnapshot).catch(() => paintSnapshot(null));
+startPoll();
+refreshStatus();
 setInterval(() => {
   ensureOverlay();
   keepWorkerAwake();

@@ -226,6 +226,8 @@ def test_http_start_stop_and_think(tmp_path):
         assert status["extension"]["connected"] is False
         assert "extBadge" in dash.text
         assert "tab offline" in dash.text
+        assert "session only / redstone" in dash.text
+        assert "stand_aside" in dash.text
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -300,6 +302,7 @@ def test_quotes_and_session_mark_extension_connected(tmp_path):
     assert n == 1
     ext = room.status()["extension"]
     assert ext["connected"] is True
+    assert ext["session_only"] is False
     assert ext["last_seen"]
     assert ext["last_quote_source"] == "page"
     assert ext["has_cookies"] is False
@@ -312,6 +315,43 @@ def test_quotes_and_session_mark_extension_connected(tmp_path):
     assert ext["has_session"] is True
     room._ext_seen = time.time() - 60
     assert room.status()["extension"]["connected"] is False
+    room.close()
+
+
+def test_session_alone_does_not_mark_tab_connected(tmp_path):
+    room = _room(tmp_path)
+    room.ingest_session({
+        "cookies": {"privy-token": "tok", "privy-id-token": "id", "privy-session": "s"},
+    })
+    ext = room.status()["extension"]
+    assert ext["connected"] is False
+    assert ext["session_only"] is True
+    assert ext["last_quote_source"] is None
+    assert ext["has_cookies"] is True
+    room.ingest_quotes(
+        [{"symbol": "ETH", "price": 3010.0, "ts": time.time(), "source": "page"}],
+        source="extension",
+    )
+    ext = room.status()["extension"]
+    assert ext["connected"] is True
+    assert ext["session_only"] is False
+    assert ext["last_quote_source"] == "page"
+    room.close()
+
+
+def test_think_payload_stand_aside_follows_pick(tmp_path):
+    room = _room(tmp_path)
+    empty = room.payload(None)
+    assert empty["stand_aside"] is True
+    assert empty["pick"] is None
+    now = time.time()
+    for t in _up_ticks(now):
+        room.ticks.push(t.symbol, t.price, t.ts, source="test")
+    body = room.think_payload()
+    if body.get("pick"):
+        assert body["stand_aside"] is False
+    else:
+        assert body["stand_aside"] is True
     room.close()
 
 

@@ -13,7 +13,9 @@ A small helper that sits in a normal logged-in Chrome tab. Three jobs:
 3. Open `chrome://extensions` → enable Developer mode → **Load unpacked** → select this `extension/` folder.
 4. Pin it. Open `/trade` and http://127.0.0.1:8765/ together. After pulling this branch, click **Reload** on the extension card so the live sync loads.
 
-Start / stop / manual / auto on either surface update the same control room. The overlay opens `/events` on localhost so a dashboard click shows on the tiles without waiting for a stale poll. The service worker stays awake while the trade tab holds a port (`euphoria-sync`).
+Start / stop / manual / auto on the side card go through the service worker (it has `host_permissions` for `127.0.0.1`) and always re-fetch `GET /status` before the pill paints. A page `fetch` from https://euphoria.finance to localhost is often blocked. The worker stays awake while the trade tab holds a port (`euphoria-sync`).
+
+Tiles: if React `gridState` is found, use it (`grid hooked`). If not, nearby up/down squares are mapped onto the live canvas (`grid fallback`) using ETH $0.50 / BTC $10 cells. Pink always paints on those two squares, even while the lesson is waiting and there is no pick. Blue only when `/think` has a pick. The card line shows `grid hooked` / `grid fallback` / `no canvas`.
 
 Default port is `8765`. To change it, from the service-worker console:
 
