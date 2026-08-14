@@ -84,6 +84,9 @@ class Signal:
     looking_at: tuple = ()
     tf_stack: TimeframeStack | None = None
     alignment: str = "unknown"
+    lesson: str = "waiting"
+    why: str = "waiting on ticks"
+    looking: str = "nearby above and below"
 
     def to_dict(self) -> dict:
         suggested: dict | str
@@ -120,6 +123,9 @@ class Signal:
             "tf_score": stack.score if stack else 0.0,
             "tf_line": stack.summary() if stack else " ".join(f"{k}·" for k in TF_KEYS),
             "alignment": self.alignment,
+            "lesson": self.lesson,
+            "why": self.why,
+            "looking": self.looking,
             "asset": self.asset,
             "momentum_pct": self.momentum_pct,
         }
@@ -143,6 +149,9 @@ def _waiting(
         looking_at=looking,
         tf_stack=stack,
         alignment=alignment,
+        lesson="waiting",
+        why="waiting on ticks",
+        looking="nearby above and below",
     )
 
 
@@ -332,6 +341,9 @@ def compute_signal(
             momentum_pct=round(mom_pct, 4),
             tf_stack=stack,
             alignment="unknown",
+            lesson="chop",
+            why="chop — tape is whipping, standing aside",
+            looking="nearby above and below",
         )
 
     if abs(mom) < FLAT_THRESHOLD or reachable < REACH_NEAREST:
@@ -345,6 +357,9 @@ def compute_signal(
             momentum_pct=round(mom_pct, 4),
             tf_stack=stack,
             alignment="unknown",
+            lesson="quiet",
+            why="quiet — not enough drift to tag a nearby square",
+            looking="nearby above and below",
         )
 
     bias = "up" if mom > 0 else "down"
@@ -366,6 +381,9 @@ def compute_signal(
                     momentum_pct=round(mom_pct, 4),
                     tf_stack=stack,
                     alignment=how,
+                    lesson="faded",
+                    why="recent tape faded — standing aside",
+                    looking="nearby above and below",
                 )
 
     # Touch-once: the nearest square on the drift side is the most likely hit.
@@ -397,6 +415,12 @@ def compute_signal(
     bar = FADING_BAR if how == "fading" else CONF_BAR
     if confidence < bar:
         why = "fading vs higher TF, no trade" if how == "fading" else "weak, no trade"
+        lesson = "fade" if how == "fading" else "weak"
+        teach = (
+            "fade — 5s tape is against the higher-TF lean, standing aside"
+            if how == "fading"
+            else "weak 5s drift — not a tap"
+        )
         return Signal(
             bias=bias,
             confidence=confidence,
@@ -407,6 +431,9 @@ def compute_signal(
             momentum_pct=round(mom_pct, 4),
             tf_stack=stack,
             alignment=how,
+            lesson=lesson,
+            why=teach,
+            looking="nearby above and below",
         )
 
     suggested = Suggestion(
@@ -423,6 +450,12 @@ def compute_signal(
         looking_at=looking,
     )
     reason = f"ETH {mom_pct:+.2f}% over last 5s{extra}{tf_note} → {hint}"
+    if how == "with-trend":
+        lesson, teach = "with-trend", "with-trend nearby tap — higher TFs agree"
+    elif how == "fading":
+        lesson, teach = "fade", "fade — 5s tape is against the higher-TF lean, still the nearby square"
+    else:
+        lesson, teach = "mixed", "nearby tap — higher TFs are mixed"
     return Signal(
         bias=bias,
         confidence=confidence,
@@ -433,6 +466,9 @@ def compute_signal(
         momentum_pct=round(mom_pct, 4),
         tf_stack=stack,
         alignment=how,
+        lesson=lesson,
+        why=teach,
+        looking=label,
     )
 
 

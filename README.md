@@ -84,8 +84,9 @@ Binds **127.0.0.1 only** (default port `8765`, override with
 `botSignature`, `deviceFingerprint`, and `approvalPermit` are present. Dry-run
 stays the default.
 
-The dashboard is start/stop, manual vs auto, a dry-run badge, ETH/BTC ticks,
-a "what I'm thinking" card (nearby square or no trade), and a recent-decisions log.
+The dashboard is a live indicator: start/stop, manual vs auto, a dry-run badge,
+ETH/BTC ticks, the nearby square (or a clear no-trade why), the higher-TF stack,
+and a last-window hit/miss. Manual never submits — you tap.
 
 Think names the **nearest square** the 5s tape is likely to *touch once*
 (official rule: price only has to enter the zone). Separately it reads a
@@ -104,9 +105,9 @@ Load unpacked from [`extension/`](extension/README.md):
 4. Pin it. Open `/trade`.
 
 The overlay sits on the live `/trade` canvas: pink on nearby candidate tiles,
-blue on the selected pick, plus a short reason and the 1m/5m/1h/4h/D/M lean
-drawn over the grid. A small card still shows start/stop. Manual mode is
-advisory. Details in [docs/AUTH.md](docs/AUTH.md).
+blue on the selected pick, plus looking-at, the 1m/5m/1h/4h/D/M lean, a short
+why, and last-window hit/miss. A small card still shows start/stop. Manual
+mode is an indicator — you tap. Details in [docs/AUTH.md](docs/AUTH.md).
 
 ## Safety
 

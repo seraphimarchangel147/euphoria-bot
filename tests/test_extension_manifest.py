@@ -43,7 +43,13 @@ def test_extension_docs_the_three_jobs():
     assert "timeframes" in inject
     assert "tf_lean" in inject
     assert "euphoria-helper-tf-strip" in inject
+    assert "euphoria-helper-grade" in inject
+    assert "think.why" in inject or "think.grade" in inject
     css = (ROOT / "overlay.css").read_text()
     assert "euphoria-helper-tf-strip" in css
+    assert "euphoria-helper-grade" in css
     content = (ROOT / "content.js").read_text()
     assert "ebo-tf" in content
+    assert "ebo-grade" in content
+    assert "indicator" in content
+    assert "click()" not in content

@@ -64,7 +64,8 @@
 }
 #euphoria-helper-tile-label,
 #euphoria-helper-tf-strip,
-#euphoria-helper-reason {
+#euphoria-helper-reason,
+#euphoria-helper-grade {
   position: absolute;
   display: none;
   pointer-events: none;
@@ -90,9 +91,23 @@
   max-width: 280px;
   white-space: normal;
 }
+#euphoria-helper-tile-label.aside {
+  border-color: #8b95a8;
+  color: #c9d4e5;
+}
+#euphoria-helper-grade {
+  border: 1px solid #2a3140;
+  color: #8b95a8;
+  max-width: 280px;
+  white-space: nowrap;
+}
 #euphoria-bot-overlay .ebo-tf {
   margin-top: 6px;
   color: #c9d4e5;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+}
+#euphoria-bot-overlay .ebo-grade {
+  margin-top: 6px;
+  color: #8b95a8;
 }

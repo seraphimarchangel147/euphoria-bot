@@ -76,7 +76,7 @@ function ensureOverlay() {
   root.id = "euphoria-bot-overlay";
   root.innerHTML = `
     <div class="ebo-head">
-      <span>helper</span>
+      <span>indicator</span>
       <span id="ebo-dry" class="ebo-pill">dry-run</span>
       <span id="ebo-mode" class="ebo-pill">manual</span>
     </div>
@@ -85,6 +85,7 @@ function ensureOverlay() {
     <div id="ebo-tf" class="ebo-tf"></div>
     <div id="ebo-conf" class="ebo-meta">confidence —</div>
     <div id="ebo-reason" class="ebo-meta"></div>
+    <div id="ebo-grade" class="ebo-grade"></div>
     <div class="ebo-actions">
       <button type="button" id="ebo-start">Start</button>
       <button type="button" id="ebo-stop">Stop</button>
@@ -120,8 +121,9 @@ function refreshOverlay() {
     document.getElementById("ebo-conf").textContent =
       "confidence " + Number(th.confidence || 0).toFixed(2);
     const sug = th.suggested;
-    const hint = th.hint || (sug && sug.hint) || th.reason || "waiting for ticks";
-    document.getElementById("ebo-hint").textContent = hint;
+    const standAside = !th.pick || sug === "no trade";
+    const hint = th.why || th.hint || (sug && sug.hint) || th.reason || "waiting on ticks";
+    document.getElementById("ebo-hint").textContent = standAside ? ("no trade — " + hint) : hint;
     const tf = document.getElementById("ebo-tf");
     if (tf) {
       const line = th.tf_line || "";
@@ -129,10 +131,14 @@ function refreshOverlay() {
       const align = th.alignment && th.alignment !== "unknown" ? th.alignment : "";
       tf.textContent = [lean, line, align].filter(Boolean).join(" · ");
     }
-    document.getElementById("ebo-reason").textContent = th.reason || "";
+    document.getElementById("ebo-reason").textContent = th.looking
+      ? ("looking at " + th.looking)
+      : (th.reason || "");
+    const gradeEl = document.getElementById("ebo-grade");
+    if (gradeEl) gradeEl.textContent = (th.grade && th.grade.line) || "";
     document.getElementById("ebo-note").textContent =
       st.mode === "manual"
-        ? "manual — advisory only, you tap"
+        ? "indicator — you tap · last window grades the call"
         : (st.dry_run ? "auto dry-run — will not live-submit" : "auto live — still needs the three artefacts");
     window.postMessage({ source: SOURCE, type: "think", payload: th }, "*");
   });

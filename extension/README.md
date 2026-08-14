@@ -4,7 +4,7 @@ A small helper that sits in a normal logged-in Chrome tab. Three jobs:
 
 1. **Prices** — listen to the tab’s own `prices.onPriceUpdate` / WebSocket frames (and a DOM fallback). Does not open a second Euphoria socket.
 2. **Session** — POST `privy-token`, `privy-id-token`, `privy-session` (and `privyUserId` if present) to `http://127.0.0.1:<port>/session` so you do not need Copy-as-cURL. If the page already produced `botSignature` / `deviceFingerprint` / `blob` on a tap you made, those are forwarded too.
-3. **Overlay** — on `/trade`, draw on the real canvas tiles: pink on nearby candidates, blue on the selected pick, plus a short reason and the 1m/5m/1h/4h/D/M lean. A small helper card stays for start/stop. Manual mode is advisory — you tap. The live grid is canvas-drawn (`gridX`/`gridY`); there are no `data-cell-*` attributes.
+3. **Overlay** — on `/trade`, draw on the real canvas tiles: pink on nearby candidates, blue on the selected pick, plus looking-at, the 1m/5m/1h/4h/D/M lean, a short why, and last-window hit/miss. A small card stays for start/stop. Manual mode is an indicator — you tap. The live grid is canvas-drawn (`gridX`/`gridY`); there are no `data-cell-*` attributes.
 
 ## Load unpacked
 

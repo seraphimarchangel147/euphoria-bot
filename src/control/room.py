@@ -8,6 +8,7 @@ from collections import deque
 from typing import Any, Callable
 
 from config import settings
+from src.analytics.lesson import GradeBook
 from src.analytics.signal import Signal, TickBuffer, compute_signal
 from src.auth.session import SessionState, apply_payload, load_session, persist_session
 
@@ -68,6 +69,7 @@ class ControlRoom:
         self._ohlc: dict[str, Any] | None = None
         self._ohlc_at = 0.0
         self._last_fingerprint: tuple | None = None
+        self.scoreboard = GradeBook()
 
     # -- commands -----------------------------------------------------------
     def start(self) -> dict[str, Any]:
@@ -143,16 +145,40 @@ class ControlRoom:
         )
         return {"ok": True, "session": view, "quotes_ingested": n_quotes}
 
-    def think(self) -> Signal:
+    def think(self, now: float | None = None) -> Signal:
         ohlc = self._refresh_ohlc()
+        now = time.time() if now is None else now
         with self._lock:
-            sig = compute_signal(self.ticks, size=self.size, grid=self.grid, ohlc=ohlc)
+            sig = compute_signal(self.ticks, now=now, size=self.size, grid=self.grid, ohlc=ohlc)
             self.last_signal = sig
+            last = self.ticks.latest("ETH")
+            self.scoreboard.update(
+                sig,
+                self.ticks.snapshot(now=now),
+                now=now,
+                grid=self.grid,
+                last_price=last.price if last else None,
+            )
             return sig
+
+    def payload(self, sig: Signal | None = None) -> dict[str, Any]:
+        sig = sig if sig is not None else self.last_signal
+        if sig is None:
+            return {"suggested": "no trade", "grade": self.scoreboard.to_dict()}
+        body = sig.to_dict()
+        body["grade"] = self.scoreboard.to_dict()
+        return body
+
+    def think_payload(self, now: float | None = None) -> dict[str, Any]:
+        return self.payload(self.think(now=now))
 
     def status(self) -> dict[str, Any]:
         with self._lock:
             sig = self.last_signal
+            think = None
+            if sig is not None:
+                think = sig.to_dict()
+                think["grade"] = self.scoreboard.to_dict()
             return {
                 "running": self.running,
                 "mode": self.mode,
@@ -160,7 +186,7 @@ class ControlRoom:
                 "quotes": self.ticks.latest_quotes(),
                 "last_decision": self.last_decision,
                 "last_error": self.last_error,
-                "think": sig.to_dict() if sig else None,
+                "think": think,
                 "session": self.session.public_view(),
                 "decisions": list(self.decisions)[-20:],
             }

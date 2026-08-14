@@ -209,9 +209,11 @@ def test_http_start_stop_and_think(tmp_path):
         assert think["tf_lean"] in ("up", "down", "mixed", "unknown")
         dash = httpx.get(f"{base}/", timeout=3.0)
         assert dash.status_code == 200
-        assert "What I'm thinking" in dash.text
-        assert "Helper for a logged-in tab" in dash.text
+        assert "Live indicator" in dash.text
         assert "tfChips" in dash.text
+        assert think["lesson"]
+        assert think["why"]
+        assert "grade" in think
     finally:
         httpd.shutdown()
         httpd.server_close()

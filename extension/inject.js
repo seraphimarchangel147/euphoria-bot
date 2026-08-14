@@ -17,6 +17,7 @@
   let lastGridKey = "";
   let tfEl = null;
   let reasonEl = null;
+  let gradeEl = null;
   let rafId = 0;
   const tileAnim = new Map();
 
@@ -326,10 +327,13 @@
       tfEl.id = "euphoria-helper-tf-strip";
       reasonEl = document.createElement("div");
       reasonEl.id = "euphoria-helper-reason";
+      gradeEl = document.createElement("div");
+      gradeEl.id = "euphoria-helper-grade";
       layer.appendChild(tileCanvas);
       layer.appendChild(labelEl);
       layer.appendChild(tfEl);
       layer.appendChild(reasonEl);
+      layer.appendChild(gradeEl);
       host.appendChild(layer);
     }
     return layer;
@@ -442,6 +446,7 @@
     if (labelEl) labelEl.style.display = "none";
     if (tfEl) tfEl.style.display = "none";
     if (reasonEl) reasonEl.style.display = "none";
+    if (gradeEl) gradeEl.style.display = "none";
     if (!snap) return;
 
     const scaleX = cssW / snap.w;
@@ -522,34 +527,54 @@
 
     const line = tfLine(think);
     const align = think.alignment && think.alignment !== "unknown" ? think.alignment : "";
-    const shortReason = (think.hint && think.hint !== "no trade")
-      ? think.hint
-      : (think.reason || "").split("→").pop().trim();
+    const lookingAt = think.looking || (selected && selected.hint) || "nearby above and below";
+    const why = think.why || (think.hint && think.hint !== "no trade" ? think.hint : "") ||
+      (think.reason || "").split("→").pop().trim();
+    const standAside = !selected || think.suggested === "no trade" || think.lesson === "chop" ||
+      think.lesson === "quiet" || think.lesson === "waiting" || think.lesson === "fade" ||
+      think.lesson === "faded" || think.lesson === "weak";
+    const liveLine = standAside
+      ? ("no trade — " + (why || "standing aside"))
+      : (why || lookingAt);
+    const anchor = pickBox || (looking[0] && targetBox(looking[0]));
     if (tfEl && line) {
-      tfEl.textContent = (think.tf_lean ? think.tf_lean + " · " : "") + line + (align ? " · " + align : "");
+      tfEl.textContent = (think.tf_lean ? think.tf_lean + " · " : "") + line;
       tfEl.style.display = "block";
-      const anchor = pickBox || (looking[0] && targetBox(looking[0]));
       if (anchor) {
         tfEl.style.left = Math.min(cssW - 220, Math.max(6, anchor.x)) + "px";
-        tfEl.style.top = Math.max(6, anchor.y - 40) + "px";
+        tfEl.style.top = Math.max(6, anchor.y - 44) + "px";
       } else {
         tfEl.style.left = "10px";
         tfEl.style.top = "10px";
       }
     }
-    if (pickBox && labelEl && selected && selected.hint) {
-      labelEl.textContent = selected.hint;
+    if (labelEl) {
+      labelEl.textContent = standAside ? "no trade" : lookingAt;
       labelEl.style.display = "block";
-      labelEl.style.left = Math.min(cssW - 200, Math.max(4, pickBox.x)) + "px";
-      labelEl.style.top = Math.max(4, pickBox.y - 20) + "px";
+      labelEl.classList.toggle("aside", !!standAside);
+      if (anchor) {
+        labelEl.style.left = Math.min(cssW - 200, Math.max(4, anchor.x)) + "px";
+        labelEl.style.top = Math.max(4, anchor.y - 22) + "px";
+      }
     }
-    if (reasonEl && (shortReason || align)) {
-      reasonEl.textContent = [align, shortReason].filter(Boolean).join(" · ");
+    if (reasonEl && liveLine) {
+      reasonEl.textContent = liveLine;
       reasonEl.style.display = "block";
-      const box = pickBox || (looking[0] && targetBox(looking[0]));
-      if (box) {
-        reasonEl.style.left = Math.min(cssW - 240, Math.max(4, box.x)) + "px";
-        reasonEl.style.top = Math.min(cssH - 22, box.y + box.h + 4) + "px";
+      if (anchor) {
+        reasonEl.style.left = Math.min(cssW - 260, Math.max(4, anchor.x)) + "px";
+        reasonEl.style.top = Math.min(cssH - 40, (anchor.y + (anchor.h || 0) + 4)) + "px";
+      }
+    }
+    const gradeLine = think.grade && think.grade.line;
+    if (gradeEl && gradeLine) {
+      gradeEl.textContent = gradeLine;
+      gradeEl.style.display = "block";
+      if (anchor) {
+        gradeEl.style.left = Math.min(cssW - 260, Math.max(4, anchor.x)) + "px";
+        gradeEl.style.top = Math.min(cssH - 22, (anchor.y + (anchor.h || 0) + 22)) + "px";
+      } else {
+        gradeEl.style.left = "10px";
+        gradeEl.style.top = "34px";
       }
     }
 

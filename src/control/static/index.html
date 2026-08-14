@@ -89,7 +89,8 @@
         <button id="btnAuto" type="button">Auto</button>
       </div>
       <p class="meta" style="margin:10px 0 0">
-        Helper for a logged-in tab. Manual only shows what it's thinking.
+        Live indicator for a logged-in tab. Manual never submits — you tap.
+        After each 5s window it grades whether price tagged the named square.
         Auto still will not live-submit unless <code>EUPHORIA_DRY_RUN=0</code>
         and botSignature / deviceFingerprint / approvalPermit are present.
       </p>
@@ -112,15 +113,16 @@
       <p id="session" class="meta" style="margin:12px 0 0"></p>
     </section>
     <section class="card full">
-      <h2>What I'm thinking</h2>
+      <h2>Live indicator</h2>
       <div id="bias" class="think-bias flat">flat</div>
-      <div id="hint" class="reason">waiting for ticks</div>
+      <div id="hint" class="reason">waiting on ticks</div>
       <div class="bar"><span id="confBar" style="width:0%"></span></div>
       <div id="conf" class="meta">confidence 0.00</div>
       <p id="reason" class="meta">—</p>
       <div id="tfLine" class="meta">1m· 5m· 1h· 4h· D· M·</div>
       <div id="tfChips" class="tf-chips"></div>
       <div id="suggested" class="meta">no trade</div>
+      <div id="grade" class="meta">last window —</div>
     </section>
     <section class="card full">
       <h2>Recent decisions</h2>
@@ -190,8 +192,11 @@
       const conf = Number(t.confidence || 0);
       $("conf").textContent = "confidence " + conf.toFixed(2);
       $("confBar").style.width = Math.round(conf * 100) + "%";
-      $("hint").textContent = t.hint || t.reason || "waiting for ticks";
-      $("reason").textContent = t.reason || "";
+      const standAside = !t.pick || t.suggested === "no trade";
+      const why = t.why || t.hint || t.reason || "waiting on ticks";
+      $("hint").textContent = standAside ? ("no trade — " + why) : why;
+      $("reason").textContent = (t.looking ? "looking at " + t.looking : "") +
+        (t.reason ? (t.looking ? " · " : "") + t.reason : "");
       const frames = t.timeframes || {};
       const keys = ["1m", "5m", "1h", "4h", "D", "M"];
       $("tfLine").textContent =
@@ -205,6 +210,7 @@
         return "<span class=\"" + lean + "\">" + k + " " + lean + pct + "</span>";
       }).join("");
       $("suggested").textContent = fmtSuggested(t.suggested || t.pick, t.hint, t.candidates || t.looking_at);
+      $("grade").textContent = (t.grade && t.grade.line) || "last window —";
       const rows = (status.decisions || []).slice().reverse();
       $("log").innerHTML = rows.map((d) =>
         "<tr><td>" + fmtTime(d.ts) + "</td><td>" + (d.action || "") +

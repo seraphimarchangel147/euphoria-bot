@@ -64,7 +64,7 @@ class ControlHandler(BaseHTTPRequestHandler):
             self._send(*_json_bytes(self.room.status()))
             return
         if path == "/think":
-            self._send(*_json_bytes(self.room.think().to_dict()))
+            self._send(*_json_bytes(self.room.think_payload()))
             return
         self._send(*_json_bytes({"error": "not found"}, 404))
 

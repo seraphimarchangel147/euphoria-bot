@@ -47,6 +47,8 @@ def test_choppy_tape_is_no_trade():
     assert sig.suggested == "no trade"
     assert sig.hint == "no trade"
     assert "choppy" in sig.reason
+    assert sig.lesson == "chop"
+    assert "standing aside" in sig.why
 
 
 def test_quiet_tape_does_not_recommend_far_cells():
@@ -56,6 +58,7 @@ def test_quiet_tape_does_not_recommend_far_cells():
     assert sig.bias == "flat"
     assert sig.suggested == "no trade"
     assert "no trade" in sig.reason
+    assert sig.lesson == "quiet"
     assert "far" not in (sig.hint or "")
     assert "lottery" not in sig.reason
 
@@ -158,6 +161,8 @@ def test_to_dict_uses_no_trade_string():
     assert d["pick"] is None
     assert d["candidates"] == d["looking_at"]
     assert set(d["timeframes"]) == set(TF_KEYS)
+    assert d["lesson"] == "waiting"
+    assert "waiting" in d["why"]
 
 
 def _ohlc(direction: str) -> dict[str, list[Bar]]:
@@ -248,3 +253,6 @@ def test_overlay_payload_shape_candidates_pick_and_tf_stack():
     assert d["pick"]["cell_y"] == 8
     assert d["tf_line"]
     assert d["alignment"] == "with-trend"
+    assert d["lesson"] == "with-trend"
+    assert "with-trend" in d["why"]
+    assert d["looking"] == "nearest square above"
