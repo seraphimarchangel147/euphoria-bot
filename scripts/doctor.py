@@ -3,10 +3,10 @@
 
     python3 scripts/doctor.py
 
-Checks dependencies, wallet, signing, oracle, geo-block, Privy auth, and
-whether captured session artefacts (botSignature / deviceFingerprint / blob)
-are present — it never invents them. Exits non-zero if anything required
-for live trading is missing.
+Checks dependencies, wallet, signing, oracle, geo-block, Privy auth,
+USDM permit readiness, and whether captured session artefacts
+(botSignature / deviceFingerprint / blob) are present — it never invents
+them. Exits non-zero if anything required for live trading is missing.
 """
 from __future__ import annotations
 
@@ -145,11 +145,27 @@ def check_session() -> None:
             )
         else:
             report(WARN, f"session {key}", "optional; not set")
-    report(
-        WARN,
-        "approvalPermit",
-        "not produced by the session store (still required for live submit)",
-    )
+
+
+def check_permit() -> None:
+    """Key present + can sign an EIP-2612 permit. Never prints the full signature."""
+    if not settings.PRIVATE_KEY:
+        report(WARN, "USDM permit", "no wallet key — cannot sign approvalPermit")
+        return
+    try:
+        from src.trader.permit import recover_permit_signer, sign_usdm_permit
+        signed = sign_usdm_permit(settings.PRIVATE_KEY, nonce=0, deadline=(1 << 256) - 1)
+        rec = recover_permit_signer(signed.message, signed.signature)
+        if rec.lower() != signed.owner.lower():
+            report(FAIL, "USDM permit recover mismatch", rec)
+            return
+        report(
+            OK,
+            "USDM EIP-2612 permit",
+            f"spender exchange, sig {signed.signature[:14]}...",
+        )
+    except Exception as exc:
+        report(FAIL, "USDM permit signing broken", str(exc)[:160])
 
 
 def check_mode() -> None:
@@ -168,6 +184,7 @@ def main() -> int:
     check_geo()
     check_auth()
     check_session()
+    check_permit()
     check_mode()
     print()
     if _failed:

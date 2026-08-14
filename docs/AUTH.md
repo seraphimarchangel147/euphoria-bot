@@ -116,11 +116,13 @@ trade-key signature, and does not generate or spoof a device fingerprint.
 | `botSignature` | signed by a registered trade key | you capture it after *you* solve Turnstile in your own Euphoria tab |
 | `deviceFingerprint` | client fingerprint your browser already produced | same capture; pass-through only |
 | `blob` | encoded fingerprint data (optional) | same capture, if the frontend sent it |
-| `approvalPermit` | EIP-2612 USDM permit | unchanged; not part of the session store |
+| `approvalPermit` | EIP-2612 MegaUSD permit | signed in Python with `EUPHORIA_PRIVATE_KEY` (spender = exchange, verified on-chain) |
 
 `EuphoriaAPI.execute_trade` still refuses to submit until `signature`,
 `botSignature`, `deviceFingerprint` and `approvalPermit` are present, and
-names the missing ones.
+names the missing ones. `prepare()` signs `approvalPermit` itself (EIP-2612
+on official MegaUSD, spender = the exchange). The remaining gaps are the
+browser artefacts above.
 
 `EuphoriaTrader.prepare` / `trade` / `_main()` auto-attach whatever
 artefacts are available from env or `~/.euphoria/session.json`. Env vars

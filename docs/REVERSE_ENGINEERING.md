@@ -170,6 +170,28 @@ From the frontend `executeTrade` function:
 }
 ```
 
+## EIP-2612 USDM Permit
+
+The vault token at `0xdf8248…` (Euphoria Vault / EV) is an ERC-4626 wrapper
+and **does not** implement `permit()`. The token the frontend actually
+permits is official MegaUSD. Verified on-chain (not assumed):
+
+| Field | Value | How we know |
+|---|---|---|
+| Token | `0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7` | `eip712Domain()` + `Approval` logs |
+| Domain name | `MegaUSD` | `eip712Domain()` / `name()` |
+| Domain version | `1` | `eip712Domain()` |
+| Chain ID | `4326` | `eip712Domain()` |
+| Spender | `0x12759afcA690637b425ffbA3265F0Dc2F6242A8D` (exchange) | `Approval` spender; signature recovers the owner only for this spender |
+| Value | `type(uint256).max` | calldata + `Approval` amount on a live `0x6f7e758c` exchange tx |
+| Types | standard `Permit(owner, spender, value, nonce, deadline)` | EIP-2612; recover matches |
+| Nonce | `MegaUSD.nonces(owner)` | was `0` before that tx, `1` after |
+| Deadline | unix seconds, ~5 minutes after the tap | calldata `1786721299` vs order `startTime` `1786721005` |
+| Encoding | 65-byte EIP-712 signature (`0x` + r + s + v) | same shape as `signature` |
+
+`src/trader/permit.py` signs this permit with the wallet key. The on-chain
+`DOMAIN_SEPARATOR()` is `0x26e1aa8b35bf8653b60726926f670a6ec590674f00b149826914c480d0e798bd`.
+
 ## Trade Key Registration
 
 Trade key registration requires a **Cloudflare Turnstile** token. This is the one piece that cannot be automated server-side.

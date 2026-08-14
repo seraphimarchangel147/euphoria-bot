@@ -16,3 +16,12 @@ def isolate_session_store(tmp_path, monkeypatch):
     monkeypatch.setattr("config.settings.BLOB", "")
     monkeypatch.setattr("config.settings.SESSION_STORE", store)
     return store
+
+
+@pytest.fixture(autouse=True)
+def mock_permit_rpc(monkeypatch):
+    """Permit nonce reads must never hit MegaETH RPC in tests."""
+    monkeypatch.setattr(
+        "src.trader.permit._eth_call",
+        lambda to, data, **k: "0x" + (0).to_bytes(32, "big").hex(),
+    )

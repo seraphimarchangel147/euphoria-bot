@@ -70,6 +70,43 @@ def test_prepare_does_not_invent_missing_artefacts():
     assert "botSignature" not in signed.payload
     assert "deviceFingerprint" not in signed.payload
     assert "blob" not in signed.payload
+    # approvalPermit is signed locally — that is not inventing a browser artefact.
+    assert signed.payload["approvalPermit"].startswith("0x")
+    assert len(signed.payload["approvalPermit"]) == 132
+    t.close()
+
+
+def test_prepare_attaches_approval_permit_from_key():
+    t = make_trader()
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    signed = t.prepare(req)
+    from src.trader.permit import recover_permit_signer, sign_usdm_permit
+    expected = sign_usdm_permit(KEY, nonce=0)
+    # deadline is time-based; recover the attached sig against a freshly built message
+    rec = recover_permit_signer(expected.message, expected.signature)
+    assert rec.lower() == signed.signer.lower()
+    assert signed.payload["approvalPermit"].startswith("0x")
+    t.close()
+
+
+def test_prepare_caller_approval_permit_wins():
+    t = make_trader()
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    signed = t.prepare(req, approvalPermit="0xcaller-permit")
+    assert signed.payload["approvalPermit"] == "0xcaller-permit"
+    t.close()
+
+
+def test_prepare_leaves_permit_missing_when_nonce_read_fails(monkeypatch):
+    from src.trader.permit import PermitError
+    monkeypatch.setattr(
+        "src.trader.auto_trader.sign_usdm_permit",
+        lambda *a, **k: (_ for _ in ()).throw(PermitError("RPC down")),
+    )
+    t = make_trader()
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    signed = t.prepare(req)
+    assert "approvalPermit" not in signed.payload
     t.close()
 
 
@@ -138,17 +175,28 @@ def test_dry_run_is_default_even_with_session_artefacts(monkeypatch):
     t.close()
 
 
-def test_live_submit_with_session_still_names_approval_permit(monkeypatch):
-    monkeypatch.setenv("EUPHORIA_BOT_SIGNATURE", "0xenv-bot")
-    monkeypatch.setenv("EUPHORIA_DEVICE_FINGERPRINT", "fp-env")
+def test_live_submit_with_key_only_names_browser_artefacts():
+    """Permit is attached; execute_trade should only name Turnstile / fingerprint."""
     t = make_trader(dry_run=False)
     req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
     with pytest.raises(EuphoriaAPIError) as exc:
         t.submit(t.prepare(req))
     msg = str(exc.value)
-    assert "approvalPermit" in msg
-    assert "botSignature" not in msg
-    assert "deviceFingerprint" not in msg
+    assert msg == (
+        "executeTrade payload is incomplete, missing: botSignature, deviceFingerprint"
+    )
+    assert "approvalPermit" not in msg
+    t.close()
+
+
+def test_live_submit_with_session_and_permit_clears_the_guard(monkeypatch):
+    monkeypatch.setenv("EUPHORIA_BOT_SIGNATURE", "0xenv-bot")
+    monkeypatch.setenv("EUPHORIA_DEVICE_FINGERPRINT", "fp-env")
+    t = make_trader(dry_run=False)
+    t.api.mutate = lambda proc, payload: {"ok": True, "procedure": proc}
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    result = t.submit(t.prepare(req))
+    assert result["ok"] is True
     t.close()
 
 
@@ -169,13 +217,14 @@ def test_dry_run_submit_does_not_hit_network():
     t.close()
 
 
-def test_live_submit_names_every_missing_artefact():
+def test_live_submit_names_every_missing_browser_artefact():
     t = make_trader(dry_run=False)
     req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
     with pytest.raises(EuphoriaAPIError) as exc:
         t.submit(t.prepare(req))
-    for field in ("botSignature", "deviceFingerprint", "approvalPermit"):
+    for field in ("botSignature", "deviceFingerprint"):
         assert field in str(exc.value)
+    assert "approvalPermit" not in str(exc.value)
     t.close()
 
 
