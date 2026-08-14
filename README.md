@@ -23,7 +23,7 @@ protocol and [docs/AUTH.md](docs/AUTH.md) for authentication.
 | Component | Status | Notes |
 |---|---|---|
 | Control room | Working | `python -m src.ui` — localhost dashboard + start/stop/think |
-| Think signal | Working | nearby 5s touch square (`src/analytics/signal.py`) |
+| Think signal | Working | nearby 5s tap + 1m/5m/1h/4h/D/M bias (`src/analytics/signal.py`) |
 | Chrome extension | Working | helper overlay in a logged-in tab: prices, session, /trade |
 | Price oracle (Redstone) | Working | fallback when extension ticks are stale |
 | EIP-712 signing | Working | sign + self-recover verified |
@@ -73,7 +73,7 @@ Binds **127.0.0.1 only** (default port `8765`, override with
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/status` | running/stopped, mode, dry_run, last quotes, last decision, last error |
-| GET | `/think` | current signal: bias, confidence, nearby square (or `"no trade"`), one-line reason |
+| GET | `/think` | current signal: nearby 5s pick/candidates, higher-TF stack (1m/5m/1h/4h/D/M), reason |
 | POST | `/start` `/stop` | operator run switch |
 | POST | `/mode` | `{"mode":"manual"}` or `{"mode":"auto"}` |
 | POST | `/session` | extension posts `{cookies, privyUserId, quotes?}` |
@@ -87,9 +87,12 @@ stays the default.
 The dashboard is start/stop, manual vs auto, a dry-run badge, ETH/BTC ticks,
 a "what I'm thinking" card (nearby square or no trade), and a recent-decisions log.
 
-Think v1 names the **nearest square** the 5s tape is likely to *touch once*
-(official rule: price only has to enter the zone). Choppy or quiet tape →
-`no trade`. It will not point at far cells.
+Think names the **nearest square** the 5s tape is likely to *touch once*
+(official rule: price only has to enter the zone). Separately it reads a
+higher-timeframe stack — 1 minute, 5 minute, 1 hour, 4 hour, daily, monthly —
+from public OHLC when available, or from accumulated ticks for the short
+windows. Higher TFs are bias only: a nearby tap can be with-trend or fading.
+Choppy or quiet tape → `no trade`. Far lottery cells are never named.
 
 ## Chrome extension
 
@@ -100,11 +103,10 @@ Load unpacked from [`extension/`](extension/README.md):
 3. `chrome://extensions` → Developer mode → Load unpacked → `extension/`.
 4. Pin it. Open `/trade`.
 
-The overlay sits on the live `/trade` canvas: faint highlight on the nearby
-tiles it is looking at, stronger highlight + label on the selected tile
-(next 5s column, one cell above/below current price). A small card still
-shows start/stop and the one-line hint. Manual mode is advisory. Details in
-[docs/AUTH.md](docs/AUTH.md).
+The overlay sits on the live `/trade` canvas: pink on nearby candidate tiles,
+blue on the selected pick, plus a short reason and the 1m/5m/1h/4h/D/M lean
+drawn over the grid. A small card still shows start/stop. Manual mode is
+advisory. Details in [docs/AUTH.md](docs/AUTH.md).
 
 ## Safety
 

@@ -15,6 +15,10 @@
   let labelEl = null;
   let lastGridEmit = 0;
   let lastGridKey = "";
+  let tfEl = null;
+  let reasonEl = null;
+  let rafId = 0;
+  const tileAnim = new Map();
 
   function emit(type, payload) {
     window.postMessage({ source: SOURCE, type, payload }, "*");
@@ -318,8 +322,14 @@
       tileCanvas = document.createElement("canvas");
       labelEl = document.createElement("div");
       labelEl.id = "euphoria-helper-tile-label";
+      tfEl = document.createElement("div");
+      tfEl.id = "euphoria-helper-tf-strip";
+      reasonEl = document.createElement("div");
+      reasonEl.id = "euphoria-helper-reason";
       layer.appendChild(tileCanvas);
       layer.appendChild(labelEl);
+      layer.appendChild(tfEl);
+      layer.appendChild(reasonEl);
       host.appendChild(layer);
     }
     return layer;
@@ -342,29 +352,76 @@
     return { sx: 1, sy: 1, cssW, cssH, dpr };
   }
 
+  function tileFromPayload(item, next, gy) {
+    if (!item || typeof item !== "object") return null;
+    const side = item.side === "down" ? "down" : "up";
+    const dist = Number(item.distance) || 1;
+    let x = next;
+    let y = side === "down" ? gy - dist : gy + dist;
+    if (item.cell_x != null && item.cell_y != null) {
+      const tx = Number(item.cell_x);
+      const ty = Number(item.cell_y);
+      if (Number.isFinite(tx) && Number.isFinite(ty) && Math.abs(tx - next) <= 3 && Math.abs(ty - gy) <= 6) {
+        x = tx;
+        y = ty;
+      }
+    }
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y, role: item.role || "look", side, hint: item.hint || item.label || "" };
+  }
+
   function tilesForThink(think, snap, price) {
     const gx = Math.floor(snap.now / snap.squareDuration);
     const gy = Math.floor(price / snap.dpl);
     const next = gx + 1;
-    const looking = [
-      { x: next, y: gy + 1, role: "look" },
-      { x: next, y: gy - 1, role: "look" },
-    ];
-    const sug = think && think.suggested;
+    const raw = (think && (think.candidates || think.looking_at)) || [];
+    let looking = [];
+    if (Array.isArray(raw) && raw.length) {
+      looking = raw.map((item) => tileFromPayload(item, next, gy)).filter(Boolean);
+    }
+    if (!looking.length) {
+      looking = [
+        { x: next, y: gy + 1, role: "look", side: "up", hint: "" },
+        { x: next, y: gy - 1, role: "look", side: "down", hint: "" },
+      ];
+    }
     let selected = null;
-    if (sug && sug !== "no trade") {
-      const dy = sug.side === "down" ? -1 : 1;
-      const dist = Number(sug.distance) || 1;
-      selected = { x: next, y: gy + dy * dist, role: "sel", hint: think.hint || sug.hint || sug.label };
-      if (sug.cell_x != null && sug.cell_y != null) {
-        const tx = Number(sug.cell_x);
-        const ty = Number(sug.cell_y);
-        if (Math.abs(tx - next) <= 3 && Math.abs(ty - gy) <= 6) {
-          selected = { x: tx, y: ty, role: "sel", hint: think.hint || sug.hint || sug.label };
-        }
-      }
+    const pick = think && think.pick;
+    const sug = think && think.suggested;
+    if (pick && pick !== "no trade") {
+      selected = tileFromPayload(pick, next, gy);
+    } else if (sug && sug !== "no trade") {
+      selected = tileFromPayload(sug, next, gy);
+    }
+    if (selected) {
+      selected.role = "sel";
+      selected.hint = (think && (think.hint || think.reason)) || selected.hint || (sug && (sug.hint || sug.label)) || "";
     }
     return { looking, selected, gx, gy, next };
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function ease(t) {
+    const x = Math.max(0, Math.min(1, t));
+    return 1 - Math.pow(1 - x, 3);
+  }
+
+  function tfGlyph(lean) {
+    if (lean === "up") return "↑";
+    if (lean === "down") return "↓";
+    if (lean === "flat") return "→";
+    return "·";
+  }
+
+  function tfLine(think) {
+    if (think && think.tf_line) return think.tf_line;
+    const frames = (think && think.timeframes) || {};
+    return ["1m", "5m", "1h", "4h", "D", "M"]
+      .map((key) => key + tfGlyph(frames[key] && frames[key].lean))
+      .join(" ");
   }
 
   function draw() {
@@ -383,6 +440,8 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
     if (labelEl) labelEl.style.display = "none";
+    if (tfEl) tfEl.style.display = "none";
+    if (reasonEl) reasonEl.style.display = "none";
     if (!snap) return;
 
     const scaleX = cssW / snap.w;
@@ -392,8 +451,11 @@
 
     const think = lastThink || {};
     const { looking, selected } = tilesForThink(think, snap, price);
+    const nowMs = performance.now();
+    const pulse = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(nowMs / 520));
+    const seen = new Set();
 
-    const paint = (tile, kind) => {
+    const targetBox = (tile) => {
       const b = cellBounds(gs, snap, tile.x, tile.y);
       const x = b.left * scaleX;
       const y = b.top * scaleY;
@@ -401,37 +463,93 @@
       const h = (b.bottom - b.top) * scaleY;
       if (w < 4 || h < 4) return null;
       if (x + w < 0 || y + h < 0 || x > cssW || y > cssH) return null;
+      return { x, y, w, h };
+    };
+
+    const paint = (tile, kind) => {
+      const dest = targetBox(tile);
+      if (!dest) return null;
+      const key = kind + ":" + tile.x + ":" + tile.y;
+      seen.add(key);
+      let anim = tileAnim.get(key);
+      if (!anim) {
+        anim = { x: dest.x, y: dest.y, w: dest.w, h: dest.h, a: 0 };
+      }
+      const t = 0.18;
+      anim.x = lerp(anim.x, dest.x, t);
+      anim.y = lerp(anim.y, dest.y, t);
+      anim.w = lerp(anim.w, dest.w, t);
+      anim.h = lerp(anim.h, dest.h, t);
+      anim.a = lerp(anim.a, 1, 0.12);
+      tileAnim.set(key, anim);
+      const alpha = ease(anim.a);
       ctx.save();
       if (kind === "look") {
-        ctx.fillStyle = "rgba(254, 160, 219, 0.16)";
-        ctx.strokeStyle = "rgba(254, 160, 219, 0.55)";
-        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.55 + 0.45 * alpha;
+        ctx.fillStyle = "rgba(254, 160, 219, 0.14)";
+        ctx.strokeStyle = "rgba(254, 160, 219, 0.72)";
+        ctx.lineWidth = 1.6;
       } else {
-        ctx.fillStyle = "rgba(110, 168, 254, 0.28)";
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = "rgba(110, 168, 254, " + (0.16 + 0.16 * pulse) + ")";
         ctx.strokeStyle = "#6ea8fe";
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2.2 + pulse * 0.6;
+        ctx.shadowColor = "rgba(110, 168, 254, 0.45)";
+        ctx.shadowBlur = 8 + pulse * 6;
       }
+      const pad = kind === "sel" ? 0.5 : 1.5;
       ctx.beginPath();
-      ctx.rect(x + 1, y + 1, Math.max(2, w - 2), Math.max(2, h - 2));
+      ctx.rect(anim.x + pad, anim.y + pad, Math.max(2, anim.w - pad * 2), Math.max(2, anim.h - pad * 2));
       ctx.fill();
       ctx.stroke();
       ctx.restore();
-      return { x, y, w, h };
+      return { x: anim.x, y: anim.y, w: anim.w, h: anim.h };
     };
 
     for (const tile of looking) {
       if (selected && tile.x === selected.x && tile.y === selected.y) continue;
       paint(tile, "look");
     }
-    if (selected) {
-      const box = paint(selected, "sel");
-      if (box && labelEl && selected.hint) {
-        labelEl.textContent = selected.hint;
-        labelEl.style.display = "block";
-        const left = Math.min(cssW - 180, Math.max(4, box.x));
-        const top = Math.max(4, box.y - 22);
-        labelEl.style.left = left + "px";
-        labelEl.style.top = top + "px";
+    let pickBox = null;
+    if (selected) pickBox = paint(selected, "sel");
+    for (const key of [...tileAnim.keys()]) {
+      if (seen.has(key)) continue;
+      const anim = tileAnim.get(key);
+      anim.a = lerp(anim.a, 0, 0.2);
+      if (anim.a < 0.04) tileAnim.delete(key);
+      else tileAnim.set(key, anim);
+    }
+
+    const line = tfLine(think);
+    const align = think.alignment && think.alignment !== "unknown" ? think.alignment : "";
+    const shortReason = (think.hint && think.hint !== "no trade")
+      ? think.hint
+      : (think.reason || "").split("→").pop().trim();
+    if (tfEl && line) {
+      tfEl.textContent = (think.tf_lean ? think.tf_lean + " · " : "") + line + (align ? " · " + align : "");
+      tfEl.style.display = "block";
+      const anchor = pickBox || (looking[0] && targetBox(looking[0]));
+      if (anchor) {
+        tfEl.style.left = Math.min(cssW - 220, Math.max(6, anchor.x)) + "px";
+        tfEl.style.top = Math.max(6, anchor.y - 40) + "px";
+      } else {
+        tfEl.style.left = "10px";
+        tfEl.style.top = "10px";
+      }
+    }
+    if (pickBox && labelEl && selected && selected.hint) {
+      labelEl.textContent = selected.hint;
+      labelEl.style.display = "block";
+      labelEl.style.left = Math.min(cssW - 200, Math.max(4, pickBox.x)) + "px";
+      labelEl.style.top = Math.max(4, pickBox.y - 20) + "px";
+    }
+    if (reasonEl && (shortReason || align)) {
+      reasonEl.textContent = [align, shortReason].filter(Boolean).join(" · ");
+      reasonEl.style.display = "block";
+      const box = pickBox || (looking[0] && targetBox(looking[0]));
+      if (box) {
+        reasonEl.style.left = Math.min(cssW - 240, Math.max(4, box.x)) + "px";
+        reasonEl.style.top = Math.min(cssH - 22, box.y + box.h + 4) + "px";
       }
     }
 
@@ -477,11 +595,15 @@
     if (quotes.length) onQuotes(quotes);
   }
 
+  function loop() {
+    draw();
+    rafId = window.requestAnimationFrame(loop);
+  }
+
   scanGlobals();
   setInterval(scanGlobals, 2000);
   setInterval(scrapeDom, 2000);
   setInterval(discoverChart, 2000);
-  setInterval(draw, 200);
   discoverChart();
-  draw();
+  if (!rafId) rafId = window.requestAnimationFrame(loop);
 })();

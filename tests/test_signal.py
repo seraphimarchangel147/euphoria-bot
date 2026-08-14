@@ -1,5 +1,6 @@
 """Canned-tick tests for the nearby-square think signal. No network."""
 from src.analytics.signal import Tick, TickBuffer, compute_signal
+from src.analytics.timeframes import TF_KEYS, Bar
 
 
 def _ramp(symbol: str, start: float, end: float, n: int, t0: float, span: float = 5.0) -> list[Tick]:
@@ -154,3 +155,96 @@ def test_to_dict_uses_no_trade_string():
     assert d["suggested"] == "no trade"
     assert d["hint"] == "no trade"
     assert d["bias"] == "flat"
+    assert d["pick"] is None
+    assert d["candidates"] == d["looking_at"]
+    assert set(d["timeframes"]) == set(TF_KEYS)
+
+
+def _ohlc(direction: str) -> dict[str, list[Bar]]:
+    out = {}
+    for key in TF_KEYS:
+        bars = []
+        px = 3000.0
+        for i in range(6):
+            close = px * (1.015 if direction == "up" else 0.985)
+            bars.append(Bar(ts=10.0 + i * 60, open=px, high=max(px, close), low=min(px, close), close=close))
+            px = close
+        out[key] = bars
+    return out
+
+
+def test_with_trend_nearby_tap_keeps_nearest_square():
+    t0 = 1_700_000_000.0
+    ticks = _ramp("ETH", 3000.0, 3003.6, 8, t0)
+    sig = compute_signal(ticks, now=t0 + 5.0, ohlc=_ohlc("up"))
+    assert sig.suggested != "no trade"
+    assert sig.suggested.distance == 1
+    assert sig.alignment == "with-trend"
+    assert sig.tf_stack.lean == "up"
+    assert "with-trend" in sig.reason
+    d = sig.to_dict()
+    assert d["pick"]["side"] == "up"
+    assert d["pick"]["role"] == "sel"
+    assert d["tf_lean"] == "up"
+    assert d["alignment"] == "with-trend"
+
+
+def test_fading_vs_higher_tf_is_no_trade():
+    t0 = 1_700_000_000.0
+    ticks = _ramp("ETH", 3000.0, 3003.6, 8, t0)
+    sig = compute_signal(ticks, now=t0 + 5.0, ohlc=_ohlc("down"))
+    assert sig.suggested == "no trade"
+    assert sig.alignment == "fading"
+    assert sig.tf_stack.lean == "down"
+    assert "fading" in sig.reason
+    assert sig.suggested == "no trade"
+    d = sig.to_dict()
+    assert d["pick"] is None
+    assert d["tf_lean"] == "down"
+    assert all(d["timeframes"][k]["lean"] == "down" for k in TF_KEYS)
+
+
+def test_dense_page_tape_is_not_marked_choppy():
+    t0 = 1_700_000_000.0
+    ticks = []
+    for i in range(40):
+        frac = i / 39
+        noise = 0.05 if i % 2 == 0 else -0.05
+        ticks.append(Tick("ETH", 3000.0 + 3.6 * frac + noise, t0 + 5.0 * frac, source="page"))
+    sig = compute_signal(ticks, now=t0 + 5.0, ohlc=_ohlc("up"))
+    assert "choppy" not in sig.reason
+    assert sig.suggested != "no trade"
+    assert sig.suggested.distance == 1
+    assert "page tape" in sig.reason
+
+
+def test_dense_tape_recent_fade_is_no_trade():
+    t0 = 1_700_000_000.0
+    early = _ramp("ETH", 3000.0, 3005.0, 30, t0, span=3.8)
+    late = _ramp("ETH", 3005.0, 3003.6, 12, t0 + 3.8, span=1.2)
+    ticks = [Tick(t.symbol, t.price, t.ts, source="page") for t in early + late]
+    sig = compute_signal(ticks, now=t0 + 5.0)
+    assert sig.suggested == "no trade"
+    assert "faded" in sig.reason
+
+
+def test_overlay_payload_shape_candidates_pick_and_tf_stack():
+    t0 = 1_700_000_000.0
+    ticks = _ramp("ETH", 3000.0, 3003.6, 8, t0)
+    sig = compute_signal(
+        ticks,
+        now=t0 + 5.0,
+        grid={"cell_x": 3, "cell_y": 7, "cell_height": 1.5},
+        ohlc=_ohlc("up"),
+    )
+    d = sig.to_dict()
+    assert set(d["timeframes"]) == set(TF_KEYS)
+    for frame in d["timeframes"].values():
+        assert {"lean", "change_pct", "source"} <= set(frame)
+    assert d["candidates"]
+    assert d["candidates"] == d["looking_at"]
+    assert {t["side"] for t in d["candidates"]} == {"up", "down"}
+    assert d["pick"]["cell_x"] == 4
+    assert d["pick"]["cell_y"] == 8
+    assert d["tf_line"]
+    assert d["alignment"] == "with-trend"

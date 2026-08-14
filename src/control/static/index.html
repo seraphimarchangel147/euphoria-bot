@@ -61,6 +61,15 @@
     th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
     th { color: var(--muted); font-weight: 600; }
     .full { grid-column: 1 / -1; }
+    .tf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .tf-chips span {
+      font-size: 11px; font-weight: 700; letter-spacing: .04em;
+      padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .tf-chips span.up { color: var(--up); border-color: #1c5c3a; }
+    .tf-chips span.down { color: var(--down); border-color: #5c1c1c; }
+    .tf-chips span.flat { color: var(--flat); }
   </style>
 </head>
 <body>
@@ -109,6 +118,8 @@
       <div class="bar"><span id="confBar" style="width:0%"></span></div>
       <div id="conf" class="meta">confidence 0.00</div>
       <p id="reason" class="meta">—</p>
+      <div id="tfLine" class="meta">1m· 5m· 1h· 4h· D· M·</div>
+      <div id="tfChips" class="tf-chips"></div>
       <div id="suggested" class="meta">no trade</div>
     </section>
     <section class="card full">
@@ -181,7 +192,19 @@
       $("confBar").style.width = Math.round(conf * 100) + "%";
       $("hint").textContent = t.hint || t.reason || "waiting for ticks";
       $("reason").textContent = t.reason || "";
-      $("suggested").textContent = fmtSuggested(t.suggested, t.hint, t.looking_at);
+      const frames = t.timeframes || {};
+      const keys = ["1m", "5m", "1h", "4h", "D", "M"];
+      $("tfLine").textContent =
+        (t.tf_lean ? "higher TF " + t.tf_lean : "higher TF unknown") +
+        (t.alignment && t.alignment !== "unknown" ? " · " + t.alignment : "") +
+        (t.tf_line ? " · " + t.tf_line : "");
+      $("tfChips").innerHTML = keys.map((k) => {
+        const f = frames[k] || {};
+        const lean = f.lean || "unknown";
+        const pct = (f.change_pct != null) ? " " + Number(f.change_pct).toFixed(2) + "%" : "";
+        return "<span class=\"" + lean + "\">" + k + " " + lean + pct + "</span>";
+      }).join("");
+      $("suggested").textContent = fmtSuggested(t.suggested || t.pick, t.hint, t.candidates || t.looking_at);
       const rows = (status.decisions || []).slice().reverse();
       $("log").innerHTML = rows.map((d) =>
         "<tr><td>" + fmtTime(d.ts) + "</td><td>" + (d.action || "") +

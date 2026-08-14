@@ -38,3 +38,12 @@ def test_extension_docs_the_three_jobs():
     assert "pointer-events" in (ROOT / "overlay.css").read_text()
     assert "gridX" in inject
     assert "click()" not in inject
+    assert "requestAnimationFrame" in inject
+    assert "candidates" in inject
+    assert "timeframes" in inject
+    assert "tf_lean" in inject
+    assert "euphoria-helper-tf-strip" in inject
+    css = (ROOT / "overlay.css").read_text()
+    assert "euphoria-helper-tf-strip" in css
+    content = (ROOT / "content.js").read_text()
+    assert "ebo-tf" in content

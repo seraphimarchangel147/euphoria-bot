@@ -4,6 +4,10 @@ Euphoria squares are price zones over a 5-second window. You win if price
 touches the zone once; it does not need to stay there. Closer squares are
 easier (lower multiplier); farther squares are harder.
 
+Higher timeframes (1m / 5m / 1h / 4h / D / M) are bias only — they score or
+gate a nearby tap (with-trend vs fading). They are never a reason to chase
+far lottery cells.
+
 This module only names a nearby square (or "no trade"). It never submits.
 """
 from __future__ import annotations
@@ -13,8 +17,18 @@ from collections import deque
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable, Sequence
 
+from src.analytics.timeframes import (
+    TF_KEYS,
+    TimeframeStack,
+    alignment as tf_alignment,
+    build_stack,
+    empty_frames,
+)
+
 WINDOW_S = 5.0
+SHORT_S = 1.2
 MIN_TICKS = 3
+DENSE_TICKS = 15
 FLAT_THRESHOLD = 0.0003  # 3 bps — no real drift
 # Default band width when the page grid is unknown (same 5 bps heuristic as the trader).
 DEFAULT_CELL_BPS = 0.0005
@@ -22,6 +36,11 @@ DEFAULT_CELL_BPS = 0.0005
 REACH_NEAREST = 0.4
 MAX_NEAR_DISTANCE = 2
 DEFAULT_SIZE = 0.10  # official default tap is small
+FLIP_RATE_CHOP = 0.35
+CONF_BAR = 0.4
+FADING_BAR = 0.58
+WITH_TREND_BOOST = 0.08
+FADING_PENALTY = 0.12
 
 
 @dataclass(frozen=True)
@@ -63,26 +82,57 @@ class Signal:
     momentum_pct: float = 0.0
     hint: str = "no trade"
     looking_at: tuple = ()
+    tf_stack: TimeframeStack | None = None
+    alignment: str = "unknown"
 
     def to_dict(self) -> dict:
         suggested: dict | str
+        pick: dict | None
         if isinstance(self.suggested, Suggestion):
             suggested = self.suggested.to_dict()
+            pick = {
+                "side": self.suggested.side,
+                "distance": self.suggested.distance,
+                "cell": self.suggested.cell,
+                "label": self.suggested.label,
+                "hint": self.suggested.hint,
+                "cell_x": self.suggested.cell_x,
+                "cell_y": self.suggested.cell_y,
+                "role": "sel",
+            }
         else:
             suggested = self.suggested
+            pick = None
+        candidates = [dict(t) if isinstance(t, dict) else t for t in self.looking_at]
+        stack = self.tf_stack
+        frames = stack.frames_dict() if stack else empty_frames()
         return {
             "bias": self.bias,
             "confidence": self.confidence,
             "reason": self.reason,
             "suggested": suggested,
             "hint": self.hint,
-            "looking_at": [dict(t) if isinstance(t, dict) else t for t in self.looking_at],
+            "looking_at": candidates,
+            "candidates": candidates,
+            "pick": pick,
+            "timeframes": frames,
+            "tf_lean": stack.lean if stack else "unknown",
+            "tf_score": stack.score if stack else 0.0,
+            "tf_line": stack.summary() if stack else " ".join(f"{k}·" for k in TF_KEYS),
+            "alignment": self.alignment,
             "asset": self.asset,
             "momentum_pct": self.momentum_pct,
         }
 
 
-def _waiting(reason: str, asset: str = "ETH") -> Signal:
+def _waiting(
+    reason: str,
+    asset: str = "ETH",
+    *,
+    stack: TimeframeStack | None = None,
+    looking: tuple = (),
+    alignment: str = "unknown",
+) -> Signal:
     return Signal(
         bias="flat",
         confidence=0.0,
@@ -90,6 +140,9 @@ def _waiting(reason: str, asset: str = "ETH") -> Signal:
         suggested="no trade",
         hint="no trade",
         asset=asset,
+        looking_at=looking,
+        tf_stack=stack,
+        alignment=alignment,
     )
 
 
@@ -112,18 +165,27 @@ def _range_width(ticks: Sequence[Tick]) -> float:
     return max(prices) - min(prices)
 
 
-def _sign_flips(ticks: Sequence[Tick]) -> int:
+def _sign_flips(ticks: Sequence[Tick]) -> tuple[int, int]:
     flips = 0
+    moves = 0
     prev = 0
     for a, b in zip(ticks, ticks[1:]):
         delta = b.price - a.price
         if delta == 0:
             continue
+        moves += 1
         sign = 1 if delta > 0 else -1
         if prev and sign != prev:
             flips += 1
         prev = sign
-    return flips
+    return flips, moves
+
+
+def _flip_rate(ticks: Sequence[Tick]) -> float:
+    flips, moves = _sign_flips(ticks)
+    if moves < 2:
+        return 0.0
+    return flips / moves
 
 
 def _cell_height(last: float, cell_height: float | None, grid: dict[str, Any] | None) -> float:
@@ -191,7 +253,13 @@ def _looking_at(grid: dict[str, Any] | None) -> tuple:
     tiles = []
     for side, distance in (("up", 1), ("down", 1)):
         cx, cy = _map_cell(side, distance, grid)
-        tiles.append({"side": side, "distance": distance, "cell_x": cx, "cell_y": cy})
+        tiles.append({
+            "side": side,
+            "distance": distance,
+            "cell_x": cx,
+            "cell_y": cy,
+            "role": "look",
+        })
     return tuple(tiles)
 
 
@@ -205,6 +273,12 @@ def _square_copy(side: str, distance: int) -> tuple[str, str, str]:
     return "next-down", "next square below", "next square below, ~5s, touch once"
 
 
+def _page_dense(ticks: Sequence[Tick]) -> bool:
+    if len(ticks) < DENSE_TICKS:
+        return False
+    return any(t.source in ("page", "extension", "ws") for t in ticks) or len(ticks) >= DENSE_TICKS
+
+
 def compute_signal(
     ticks: Sequence[Tick] | "TickBuffer",
     *,
@@ -213,6 +287,7 @@ def compute_signal(
     size: float = DEFAULT_SIZE,
     cell_height: float | None = None,
     grid: dict[str, Any] | None = None,
+    ohlc: dict[str, Any] | None = None,
 ) -> Signal:
     """Name the nearby square most likely to get touched in the next ~5s. No I/O."""
     now = time.time() if now is None else now
@@ -221,16 +296,20 @@ def compute_signal(
     else:
         seq = list(ticks)
 
+    stack = build_stack(seq, symbol="ETH", now=now, ohlc=ohlc)
+    looking = _looking_at(grid)
+
     eth = _in_window(seq, "ETH", now, window_s)
     if len(eth) < MIN_TICKS:
-        return _waiting("waiting for ETH ticks")
+        return _waiting("waiting for ETH ticks", stack=stack, looking=looking)
 
     first, last = eth[0].price, eth[-1].price
     mom = _momentum(eth)
     mom_pct = mom * 100.0
     net = abs(last - first)
     rng = _range_width(eth)
-    flips = _sign_flips(eth)
+    flips, _moves = _sign_flips(eth)
+    flip_rate = _flip_rate(eth)
     height = _cell_height(last, cell_height, grid)
     reachable = net / height if height > 0 else 0.0
 
@@ -242,9 +321,7 @@ def compute_signal(
         and ((btc_mom > 0 and mom > 0) or (btc_mom < 0 and mom < 0))
     )
 
-    looking = _looking_at(grid)
-
-    if flips >= 2 and rng > 2.0 * max(net, height * 0.25):
+    if flip_rate > FLIP_RATE_CHOP and rng > 2.0 * max(net, height * 0.25):
         return Signal(
             bias="flat",
             confidence=round(min(0.35, 0.12 + flips * 0.04), 3),
@@ -253,6 +330,8 @@ def compute_signal(
             hint="no trade",
             looking_at=looking,
             momentum_pct=round(mom_pct, 4),
+            tf_stack=stack,
+            alignment="unknown",
         )
 
     if abs(mom) < FLAT_THRESHOLD or reachable < REACH_NEAREST:
@@ -264,9 +343,31 @@ def compute_signal(
             hint="no trade",
             looking_at=looking,
             momentum_pct=round(mom_pct, 4),
+            tf_stack=stack,
+            alignment="unknown",
         )
 
     bias = "up" if mom > 0 else "down"
+    how = tf_alignment(bias, stack.lean)
+
+    # Dense / ~10Hz tape: if the last second disagrees, the 5s drift already faded.
+    if _page_dense(eth):
+        short = _in_window(eth, "ETH", now, SHORT_S)
+        if len(short) >= 4:
+            short_mom = _momentum(short)
+            if abs(short_mom) >= FLAT_THRESHOLD and (short_mom > 0) != (mom > 0):
+                return Signal(
+                    bias="flat",
+                    confidence=round(min(0.35, 0.18 + abs(short_mom) * 40), 3),
+                    reason="ETH 5s drift faded on the recent tape → no trade",
+                    suggested="no trade",
+                    hint="no trade",
+                    looking_at=looking,
+                    momentum_pct=round(mom_pct, 4),
+                    tf_stack=stack,
+                    alignment=how,
+                )
+
     # Touch-once: the nearest square on the drift side is the most likely hit.
     # Far cells are never named, even on a large print.
     distance = min(1, MAX_NEAR_DISTANCE)
@@ -281,17 +382,31 @@ def compute_signal(
     if btc_confirms:
         raw = min(1.0, raw + 0.12)
         extra = ", BTC agreeing"
+    if _page_dense(eth):
+        extra += ", page tape"
+
+    tf_note = ""
+    if how == "with-trend":
+        raw = min(1.0, raw + WITH_TREND_BOOST)
+        tf_note = f", with-trend vs {stack.lean}"
+    elif how == "fading":
+        raw = max(0.0, raw - FADING_PENALTY)
+        tf_note = f", fading vs higher-TF {stack.lean}"
 
     confidence = round(max(0.0, min(1.0, raw)), 3)
-    if confidence < 0.4:
+    bar = FADING_BAR if how == "fading" else CONF_BAR
+    if confidence < bar:
+        why = "fading vs higher TF, no trade" if how == "fading" else "weak, no trade"
         return Signal(
             bias=bias,
             confidence=confidence,
-            reason=f"ETH {mom_pct:+.2f}% over last 5s{extra} → weak, no trade",
+            reason=f"ETH {mom_pct:+.2f}% over last 5s{extra}{tf_note} → {why}",
             suggested="no trade",
             hint="no trade",
             looking_at=looking,
             momentum_pct=round(mom_pct, 4),
+            tf_stack=stack,
+            alignment=how,
         )
 
     suggested = Suggestion(
@@ -307,7 +422,7 @@ def compute_signal(
         cell_height=round(height, 8),
         looking_at=looking,
     )
-    reason = f"ETH {mom_pct:+.2f}% over last 5s{extra} → {hint}"
+    reason = f"ETH {mom_pct:+.2f}% over last 5s{extra}{tf_note} → {hint}"
     return Signal(
         bias=bias,
         confidence=confidence,
@@ -316,13 +431,19 @@ def compute_signal(
         hint=hint,
         looking_at=looking,
         momentum_pct=round(mom_pct, 4),
+        tf_stack=stack,
+        alignment=how,
     )
 
 
 class TickBuffer:
-    """Bounded in-memory tick ring. Not a second price socket — just storage."""
+    """Bounded in-memory tick ring. Not a second price socket — just storage.
 
-    def __init__(self, maxlen: int = 800, max_age_s: float = 60.0) -> None:
+    Sized for a ~10Hz page feed over ~20 minutes so 1m / 5m bars can be
+    accumulated when public OHLC is missing.
+    """
+
+    def __init__(self, maxlen: int = 12_000, max_age_s: float = 1200.0) -> None:
         self._ticks: deque[Tick] = deque(maxlen=maxlen)
         self.max_age_s = max_age_s
 

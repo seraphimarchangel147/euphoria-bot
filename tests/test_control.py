@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from src.analytics.signal import Tick
+from src.analytics.timeframes import TF_KEYS, Bar
 from src.control.room import ControlError, ControlRoom
 from src.control.server import make_server
 
@@ -202,10 +203,15 @@ def test_http_start_stop_and_think(tmp_path):
         assert think["bias"] == "up"
         assert think["hint"] == "nearest square above, ~5s, touch once"
         assert think["suggested"]["cell"] == "nearest-up"
+        assert set(think["timeframes"]) == {"1m", "5m", "1h", "4h", "D", "M"}
+        assert think["candidates"] == think["looking_at"]
+        assert "pick" in think
+        assert think["tf_lean"] in ("up", "down", "mixed", "unknown")
         dash = httpx.get(f"{base}/", timeout=3.0)
         assert dash.status_code == 200
         assert "What I'm thinking" in dash.text
         assert "Helper for a logged-in tab" in dash.text
+        assert "tfChips" in dash.text
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -238,6 +244,34 @@ def test_http_session_redacts_and_feeds_quotes(tmp_path, caplog):
         httpd.shutdown()
         httpd.server_close()
         room.close()
+
+
+def test_think_payload_includes_mtf_stack_from_injected_ohlc(tmp_path):
+    def ohlc_fn(asset: str):
+        assert asset == "ETH"
+        out = {}
+        for key in TF_KEYS:
+            px = 3000.0
+            bars = []
+            for i in range(5):
+                close = px * 1.02
+                bars.append(Bar(ts=i * 60.0, open=px, high=close, low=px, close=close))
+                px = close
+            out[key] = bars
+        return out
+
+    room = _room(tmp_path, enable_ohlc=True, ohlc_fn=ohlc_fn)
+    now = time.time()
+    for t in _up_ticks(now):
+        room.ticks.push(t.symbol, t.price, t.ts, source="test")
+    sig = room.think()
+    body = sig.to_dict()
+    assert body["tf_lean"] == "up"
+    assert body["alignment"] == "with-trend"
+    assert body["pick"]["side"] == "up"
+    assert set(body["timeframes"]) == set(TF_KEYS)
+    assert all(body["timeframes"][k]["source"] == "ohlc" for k in TF_KEYS)
+    room.close()
 
 
 def test_make_server_rejects_non_localhost(tmp_path):

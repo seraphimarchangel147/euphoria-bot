@@ -82,6 +82,7 @@ function ensureOverlay() {
     </div>
     <div id="ebo-bias" class="ebo-bias flat">flat</div>
     <div id="ebo-hint" class="ebo-reason">connecting to local helper…</div>
+    <div id="ebo-tf" class="ebo-tf"></div>
     <div id="ebo-conf" class="ebo-meta">confidence —</div>
     <div id="ebo-reason" class="ebo-meta"></div>
     <div class="ebo-actions">
@@ -121,6 +122,13 @@ function refreshOverlay() {
     const sug = th.suggested;
     const hint = th.hint || (sug && sug.hint) || th.reason || "waiting for ticks";
     document.getElementById("ebo-hint").textContent = hint;
+    const tf = document.getElementById("ebo-tf");
+    if (tf) {
+      const line = th.tf_line || "";
+      const lean = th.tf_lean && th.tf_lean !== "unknown" ? th.tf_lean : "";
+      const align = th.alignment && th.alignment !== "unknown" ? th.alignment : "";
+      tf.textContent = [lean, line, align].filter(Boolean).join(" · ");
+    }
     document.getElementById("ebo-reason").textContent = th.reason || "";
     document.getElementById("ebo-note").textContent =
       st.mode === "manual"

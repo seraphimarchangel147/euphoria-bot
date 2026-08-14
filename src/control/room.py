@@ -16,6 +16,7 @@ log = logging.getLogger("euphoria.control")
 Mode = str  # "manual" | "auto"
 ORACLE_STALE_S = 3.0
 ORACLE_POLL_S = 5.0
+OHLC_TTL_S = 60.0
 LOOP_S = 0.5
 DECISION_KEEP = 40
 
@@ -30,7 +31,9 @@ class ControlRoom:
         *,
         dry_run: bool | None = None,
         enable_oracle: bool = True,
+        enable_ohlc: bool | None = None,
         oracle_fn: Callable[[list[str]], dict] | None = None,
+        ohlc_fn: Callable[..., dict] | None = None,
         submit_fn: Callable[[Signal, SessionState], Any] | None = None,
         session: SessionState | None = None,
         session_path=None,
@@ -39,7 +42,9 @@ class ControlRoom:
     ) -> None:
         self.dry_run = settings.DRY_RUN if dry_run is None else dry_run
         self.enable_oracle = enable_oracle
+        self.enable_ohlc = enable_oracle if enable_ohlc is None else enable_ohlc
         self._oracle_fn = oracle_fn
+        self._ohlc_fn = ohlc_fn
         self._submit_fn = submit_fn
         self.session_path = session_path
         self.token_path = token_path
@@ -60,6 +65,8 @@ class ControlRoom:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_oracle = 0.0
+        self._ohlc: dict[str, Any] | None = None
+        self._ohlc_at = 0.0
         self._last_fingerprint: tuple | None = None
 
     # -- commands -----------------------------------------------------------
@@ -137,8 +144,9 @@ class ControlRoom:
         return {"ok": True, "session": view, "quotes_ingested": n_quotes}
 
     def think(self) -> Signal:
+        ohlc = self._refresh_ohlc()
         with self._lock:
-            sig = compute_signal(self.ticks, size=self.size, grid=self.grid)
+            sig = compute_signal(self.ticks, size=self.size, grid=self.grid, ohlc=ohlc)
             self.last_signal = sig
             return sig
 
@@ -183,6 +191,28 @@ class ControlRoom:
                 self.last_error = f"{type(exc).__name__}: {exc}"
                 log.warning("control loop: %s", self.last_error)
             self._stop.wait(LOOP_S)
+
+    def _refresh_ohlc(self) -> dict[str, Any] | None:
+        """Public ETH OHLC for higher-TF bias. Tests inject ``ohlc_fn`` or disable it."""
+        if not self.enable_ohlc:
+            return self._ohlc
+        now = time.time()
+        if self._ohlc is not None and now - self._ohlc_at < OHLC_TTL_S:
+            return self._ohlc
+        fn = self._ohlc_fn
+        if fn is None:
+            from src.analytics.ohlc import fetch_ohlc_stack
+
+            fn = fetch_ohlc_stack
+        try:
+            stack = fn("ETH")
+        except Exception as exc:
+            log.warning("ohlc: %s", exc)
+            return self._ohlc
+        if isinstance(stack, dict):
+            self._ohlc = stack
+            self._ohlc_at = now
+        return self._ohlc
 
     def _maybe_oracle(self) -> None:
         if not self.enable_oracle:
