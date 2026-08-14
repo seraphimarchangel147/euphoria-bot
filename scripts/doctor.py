@@ -3,7 +3,10 @@
 
     python3 scripts/doctor.py
 
-Exits non-zero if anything required for live trading is missing.
+Checks dependencies, wallet, signing, oracle, geo-block, Privy auth, and
+whether captured session artefacts (botSignature / deviceFingerprint / blob)
+are present — it never invents them. Exits non-zero if anything required
+for live trading is missing.
 """
 from __future__ import annotations
 
@@ -119,6 +122,36 @@ def check_auth() -> None:
         report(FAIL, "Privy token refresh", str(exc)[:160])
 
 
+def check_session() -> None:
+    """Report captured Turnstile / fingerprint artefacts without inventing them."""
+    from src.auth.session import load_session_artefacts
+
+    arts = load_session_artefacts()
+    required = (("botSignature", True), ("deviceFingerprint", True), ("blob", False))
+    for key, needed in required:
+        present = bool(getattr(arts, key))
+        source = arts.sources.get(key, "")
+        if present:
+            n = len(getattr(arts, key))
+            where = f"from {source}, {n} chars" if source else f"{n} chars"
+            report(OK, f"session {key}", where)
+            continue
+        if needed:
+            status = FAIL if not settings.DRY_RUN else WARN
+            report(
+                status,
+                f"session {key}",
+                "not captured — paste from your own Euphoria tab (docs/AUTH.md)",
+            )
+        else:
+            report(WARN, f"session {key}", "optional; not set")
+    report(
+        WARN,
+        "approvalPermit",
+        "not produced by the session store (still required for live submit)",
+    )
+
+
 def check_mode() -> None:
     if settings.DRY_RUN:
         report(OK, "DRY_RUN enabled", "no orders will be submitted")
@@ -134,6 +167,7 @@ def main() -> int:
     check_oracle()
     check_geo()
     check_auth()
+    check_session()
     check_mode()
     print()
     if _failed:

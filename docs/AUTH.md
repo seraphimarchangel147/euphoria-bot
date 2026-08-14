@@ -96,21 +96,131 @@ renew it — it will tell you so explicitly rather than failing obscurely.
 
 ## Security notes
 
-* `.env` and `tokens.json` are gitignored; the token store is written 0600.
+* `.env`, `tokens.json` and `session.json` are gitignored; both stores are
+  written 0600.
 * A refresh token is a full account credential. Treat it like a password.
 * Logging into Euphoria in a browser may rotate/revoke the captured token; if
   the bot reports `Privy rejected the refresh token`, capture a fresh one.
+* `botSignature` / `deviceFingerprint` / `blob` are session artefacts from
+  *your* browser. Treat them like credentials; do not share them.
 
-## Still browser-bound
+## Live submit: pass-through of browser artefacts
 
-Auth is solved. Submitting a live order still needs three artefacts the
-frontend generates (see `REVERSE_ENGINEERING.md`):
+Auth is solved. A live `executeTrade` still needs artefacts the frontend
+produces in a real browser (see `REVERSE_ENGINEERING.md`). The bot **passes
+them through** — it does not solve Cloudflare Turnstile, does not mint a
+trade-key signature, and does not generate or spoof a device fingerprint.
 
-| Artefact | Why | Path forward |
+| Artefact | Why | How the bot gets it |
 |---|---|---|
-| `botSignature` | signed by a registered trade key | registration needs a Cloudflare Turnstile token — genuinely browser-only |
-| `deviceFingerprint` | client fingerprint | spoofable once a real sample is captured |
-| `approvalPermit` | EIP-2612 USDM permit | implementable in Python, no browser needed |
+| `botSignature` | signed by a registered trade key | you capture it after *you* solve Turnstile in your own Euphoria tab |
+| `deviceFingerprint` | client fingerprint your browser already produced | same capture; pass-through only |
+| `blob` | encoded fingerprint data (optional) | same capture, if the frontend sent it |
+| `approvalPermit` | EIP-2612 USDM permit | unchanged; not part of the session store |
 
-`EuphoriaAPI.execute_trade` refuses to submit until all three are present and
-names the missing ones, so this fails loudly instead of as a server rejection.
+`EuphoriaAPI.execute_trade` still refuses to submit until `signature`,
+`botSignature`, `deviceFingerprint` and `approvalPermit` are present, and
+names the missing ones.
+
+`EuphoriaTrader.prepare` / `trade` / `_main()` auto-attach whatever
+artefacts are available from env or `~/.euphoria/session.json`. Env vars
+win over the file. Missing keys stay missing.
+
+```
+EUPHORIA_BOT_SIGNATURE=
+EUPHORIA_DEVICE_FINGERPRINT=
+EUPHORIA_BLOB=
+```
+
+Or `~/.euphoria/session.json` (mode 0600):
+
+```json
+{
+  "botSignature": "0x...",
+  "deviceFingerprint": "...",
+  "blob": "..."
+}
+```
+
+Turnstile still has to be solved by you, in a real browser, on your own
+logged-in session. Recapture when the server starts rejecting the values
+(they are short-lived and bound to that browser challenge).
+
+### Capture from your own Euphoria tab
+
+Do this only in a browser where **you** are logged into **your** Euphoria
+account. Complete the Turnstile challenge yourself when the page asks.
+
+**Network panel (simplest)**
+
+1. Open `https://euphoria.finance` and log in.
+2. DevTools → **Network**, filter `executeTrade`.
+3. Place a trade as you normally would — solve Turnstile in the page.
+4. Open that request → Payload / Request. Copy `botSignature`,
+   `deviceFingerprint`, and `blob` if present.
+
+**DevTools console hook (optional)**
+
+Paste this on the Euphoria tab, then place a trade. It only *reads* the
+payload your tab already sends; it does not solve anything or talk to
+another origin.
+
+```js
+(function captureEuphoriaSession() {
+  const KEYS = ["botSignature", "deviceFingerprint", "blob"];
+  function pick(obj, acc, depth) {
+    if (!obj || typeof obj !== "object" || depth > 6) return acc;
+    for (const k of KEYS) {
+      if (typeof obj[k] === "string" && obj[k]) acc[k] = obj[k];
+    }
+    const kids = Array.isArray(obj) ? obj : Object.values(obj);
+    for (const v of kids) pick(v, acc, depth + 1);
+    return acc;
+  }
+  function report(src, raw) {
+    let parsed = raw;
+    if (typeof raw === "string") {
+      try { parsed = JSON.parse(raw); } catch (e) { return; }
+    }
+    const found = pick(parsed, {}, 0);
+    if (!found.botSignature && !found.deviceFingerprint) return;
+    const text = JSON.stringify(found, null, 2);
+    console.log("Euphoria session artefacts from " + src + " (pass-through only):");
+    console.log(text);
+    if (typeof copy === "function") copy(text);
+  }
+  const origFetch = window.fetch;
+  window.fetch = function (input, init) {
+    if (init && init.body) report("fetch", init.body);
+    return origFetch.apply(this, arguments);
+  };
+  const origWS = WebSocket.prototype.send;
+  WebSocket.prototype.send = function (data) {
+    report("websocket", data);
+    return origWS.apply(this, arguments);
+  };
+  const origXHR = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function (body) {
+    if (body) report("xhr", body);
+    return origXHR.apply(this, arguments);
+  };
+  console.log("Hook ready. Place a trade in this tab (solve Turnstile yourself).");
+})();
+```
+
+Then persist what you copied:
+
+```bash
+python3 scripts/save_session.py <<'EOF'
+{
+  "botSignature": "0x...",
+  "deviceFingerprint": "...",
+  "blob": "..."
+}
+EOF
+```
+
+`save_session.py` writes `~/.euphoria/session.json` mode 0600 and strips
+any private-key fields if you accidentally included them. Verify with
+`python3 scripts/doctor.py` — it reports whether artefacts are present
+and never invents them.

@@ -48,6 +48,17 @@ TOKEN_STORE = Path(
     os.environ.get("EUPHORIA_TOKEN_STORE", str(Path.home() / ".euphoria" / "tokens.json"))
 )
 
+# --- Browser session artefacts (pass-through only) -------------------------
+# Captured from the user's own logged-in Euphoria tab after they solve
+# Turnstile. The bot never generates, solves, or spoofs these.
+# Env vars win over ~/.euphoria/session.json (see src/auth/session.py).
+SESSION_STORE = Path(
+    os.environ.get("EUPHORIA_SESSION_STORE", str(Path.home() / ".euphoria" / "session.json"))
+)
+BOT_SIGNATURE = os.environ.get("EUPHORIA_BOT_SIGNATURE", "")
+DEVICE_FINGERPRINT = os.environ.get("EUPHORIA_DEVICE_FINGERPRINT", "")
+BLOB = os.environ.get("EUPHORIA_BLOB", "")
+
 # --- Proxy (geo-block bypass) ---------------------------------------------
 PROXY_URL = os.environ.get("EUPHORIA_PROXY", "") or None
 

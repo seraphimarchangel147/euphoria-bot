@@ -24,7 +24,7 @@ protocol and [docs/AUTH.md](docs/AUTH.md) for authentication.
 | Privy auth | Working | self-renewing via refresh token (docs/AUTH.md) |
 | API client | Working | tRPC query/mutate, retries, typed errors |
 | Trade assembly | Working | verified end-to-end in dry run |
-| Live submission | Blocked | needs botSignature (Turnstile), deviceFingerprint, approvalPermit |
+| Live submission | Pass-through | attaches captured `botSignature` / `deviceFingerprint` / `blob` from env or `~/.euphoria/session.json`; Turnstile is still solved by you in a real browser; `approvalPermit` unchanged |
 | Geo-block bypass | Needs proxy | API blocks US IPs; concurrent SOCKS5 discovery included |
 
 ## Setup
@@ -36,20 +36,23 @@ python3 scripts/doctor.py # tells you exactly what is missing
 ```
 
 `scripts/doctor.py` checks dependencies, wallet key, signing roundtrip, oracle,
-geo-block and Privy auth, and exits non-zero if the bot is not ready.
+geo-block, Privy auth, and captured session artefacts, and exits non-zero if
+the bot is not ready. It never invents Turnstile or fingerprint values.
 
 ## Usage
 
 ```bash
 python3 -m src.monitor.price_monitor   # price alerts (optional Discord webhook)
 python3 -m src.trader.auto_trader      # trade loop (DRY_RUN=1 by default)
-python3 -m pytest                      # 43 tests
+python3 -m pytest                      # 72 tests
 ```
 
 ```python
 from src.trader.auto_trader import EuphoriaTrader
 trader = EuphoriaTrader()          # DRY_RUN unless EUPHORIA_DRY_RUN=0
 print(trader.trade("ETH", 2.5))    # live price -> risk -> sign -> dry-run payload
+# Live submit (EUPHORIA_DRY_RUN=0) auto-attaches artefacts you captured
+# from your own Euphoria tab (docs/AUTH.md). No captcha solving.
 ```
 
 ## Safety

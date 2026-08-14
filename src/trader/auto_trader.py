@@ -1,9 +1,12 @@
 """Euphoria auto-trader: oracle -> risk -> sign -> (dry-run|submit).
 
-Runs end-to-end in DRY_RUN today. DRY_RUN=0 additionally needs the three
-browser-derived artefacts documented in docs/REVERSE_ENGINEERING.md
-(botSignature, deviceFingerprint, approvalPermit); the trader assembles and
-signs everything else and reports precisely what is missing.
+Runs end-to-end in DRY_RUN today. DRY_RUN=0 additionally needs
+botSignature, deviceFingerprint and approvalPermit. The first two (plus
+optional blob) are pass-through from a session the user captured in their
+own browser — env or ~/.euphoria/session.json. The bot does not solve
+Turnstile or generate fingerprints. approvalPermit is unchanged.
+prepare() auto-attaches whatever artefacts are available; missing ones
+stay missing so execute_trade can name them.
 """
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ from typing import Any
 
 from config import settings
 from src.auth.privy import PrivyAuth
+from src.auth.session import load_session_artefacts
 from src.monitor import oracle
 from src.trader import eip712
 from src.trader.api import EuphoriaAPI, EuphoriaAPIError, TradeRequest
@@ -105,6 +109,13 @@ class EuphoriaTrader:
             raise RuntimeError(
                 f"signature self-check failed: recovered {recovered}, expected {self.address}"
             )
+
+        artefacts = load_session_artefacts()
+        attached = [k for k, v in artefacts.as_payload().items() if k not in extra]
+        for key, value in artefacts.as_payload().items():
+            extra.setdefault(key, value)
+        if attached:
+            log.info("attached session artefacts: %s", ", ".join(attached))
 
         payload = self.api.to_payload(req, signature, message["nonce"], **extra)
         return SignedTrade(req, message, signature, payload, recovered)

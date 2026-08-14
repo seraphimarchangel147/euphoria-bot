@@ -63,6 +63,95 @@ def test_prepare_signs_and_self_verifies():
     t.close()
 
 
+def test_prepare_does_not_invent_missing_artefacts():
+    t = make_trader()
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    signed = t.prepare(req)
+    assert "botSignature" not in signed.payload
+    assert "deviceFingerprint" not in signed.payload
+    assert "blob" not in signed.payload
+    t.close()
+
+
+def test_prepare_attaches_artefacts_from_env(monkeypatch):
+    monkeypatch.setenv("EUPHORIA_BOT_SIGNATURE", "0xenv-bot")
+    monkeypatch.setenv("EUPHORIA_DEVICE_FINGERPRINT", "fp-env")
+    monkeypatch.setenv("EUPHORIA_BLOB", "blob-env")
+    t = make_trader()
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    signed = t.prepare(req)
+    assert signed.payload["botSignature"] == "0xenv-bot"
+    assert signed.payload["deviceFingerprint"] == "fp-env"
+    assert signed.payload["blob"] == "blob-env"
+    t.close()
+
+
+def test_prepare_attaches_artefacts_from_settings(monkeypatch):
+    from config import settings
+    monkeypatch.setattr(settings, "BOT_SIGNATURE", "0xsettings-bot")
+    monkeypatch.setattr(settings, "DEVICE_FINGERPRINT", "fp-settings")
+    monkeypatch.setattr(settings, "BLOB", "blob-settings")
+    t = make_trader()
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    signed = t.prepare(req)
+    assert signed.payload["botSignature"] == "0xsettings-bot"
+    assert signed.payload["deviceFingerprint"] == "fp-settings"
+    assert signed.payload["blob"] == "blob-settings"
+    t.close()
+
+
+def test_prepare_attaches_artefacts_from_session_file(tmp_path):
+    (tmp_path / "session.json").write_text(json.dumps({
+        "botSignature": "0xfile-bot",
+        "deviceFingerprint": "fp-file",
+        "blob": "blob-file",
+    }))
+    t = make_trader()
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    signed = t.prepare(req)
+    assert signed.payload["botSignature"] == "0xfile-bot"
+    assert signed.payload["deviceFingerprint"] == "fp-file"
+    assert signed.payload["blob"] == "blob-file"
+    t.close()
+
+
+def test_prepare_caller_extra_wins_over_session(monkeypatch):
+    monkeypatch.setenv("EUPHORIA_BOT_SIGNATURE", "0xenv-bot")
+    monkeypatch.setenv("EUPHORIA_DEVICE_FINGERPRINT", "fp-env")
+    t = make_trader()
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    signed = t.prepare(req, botSignature="0xcaller-bot")
+    assert signed.payload["botSignature"] == "0xcaller-bot"
+    assert signed.payload["deviceFingerprint"] == "fp-env"
+    t.close()
+
+
+def test_dry_run_is_default_even_with_session_artefacts(monkeypatch):
+    monkeypatch.setenv("EUPHORIA_BOT_SIGNATURE", "0xenv-bot")
+    monkeypatch.setenv("EUPHORIA_DEVICE_FINGERPRINT", "fp-env")
+    t = EuphoriaTrader(private_key=KEY, proxy="", risk=RiskEngine(max_trade=10, max_daily_loss=50, max_open=3))
+    assert t.dry_run is True
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    result = t.submit(t.prepare(req))
+    assert result["dryRun"] is True
+    assert result["payload"]["botSignature"] == "0xenv-bot"
+    t.close()
+
+
+def test_live_submit_with_session_still_names_approval_permit(monkeypatch):
+    monkeypatch.setenv("EUPHORIA_BOT_SIGNATURE", "0xenv-bot")
+    monkeypatch.setenv("EUPHORIA_DEVICE_FINGERPRINT", "fp-env")
+    t = make_trader(dry_run=False)
+    req = TradeRequest(asset="ETH", amount=1.0, start_price=1884.0, price_interval=1.0)
+    with pytest.raises(EuphoriaAPIError) as exc:
+        t.submit(t.prepare(req))
+    msg = str(exc.value)
+    assert "approvalPermit" in msg
+    assert "botSignature" not in msg
+    assert "deviceFingerprint" not in msg
+    t.close()
+
+
 def test_risk_blocks_before_signing():
     t = make_trader()
     req = TradeRequest(asset="ETH", amount=999999, start_price=1884.0, price_interval=1.0)

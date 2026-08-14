@@ -54,5 +54,19 @@ def test_execute_trade_reports_missing_artefacts():
     api = EuphoriaAPI.__new__(EuphoriaAPI)   # no network
     with pytest.raises(EuphoriaAPIError) as exc:
         api.execute_trade({"signature": "0xsig"})
-    for field in ("botSignature", "deviceFingerprint", "approvalPermit"):
-        assert field in str(exc.value)
+    assert str(exc.value) == (
+        "executeTrade payload is incomplete, missing: "
+        "botSignature, deviceFingerprint, approvalPermit"
+    )
+
+
+def test_execute_trade_blob_is_optional():
+    api = EuphoriaAPI.__new__(EuphoriaAPI)
+    with pytest.raises(EuphoriaAPIError) as exc:
+        api.execute_trade({
+            "signature": "0xsig",
+            "botSignature": "0xbot",
+            "deviceFingerprint": "fp",
+        })
+    assert str(exc.value) == "executeTrade payload is incomplete, missing: approvalPermit"
+    assert "blob" not in str(exc.value)
