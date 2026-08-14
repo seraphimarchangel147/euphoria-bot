@@ -1,7 +1,48 @@
 # Authentication
 
-This is the piece that blocked the bot. Short version: **stop chasing the
-identity token, capture the refresh token instead.**
+Two ways to get credentials into the bot. Neither one uses a debug Chrome
+profile, CDP, or cookie-scraping from disk.
+
+## Extension → localhost (preferred for the control room)
+
+Log into Euphoria in a **normal** Chrome window. Load the unpacked extension
+from `extension/`. While that tab is logged in, the extension POSTs:
+
+```
+POST http://127.0.0.1:8765/session
+{
+  "cookies": {
+    "privy-token": "...",
+    "privy-id-token": "...",
+    "privy-session": "..."
+  },
+  "privyUserId": "did:privy:...",
+  "quotes": [{"symbol": "ETH", "price": 3000.12, "ts": 1710000000}]
+}
+```
+
+The control room writes `~/.euphoria/tokens.json` and `~/.euphoria/session.json`
+mode `0600` and never logs the values. You can also drop the same cookie names
+into the environment (`EUPHORIA_PRIVY_TOKEN`, `EUPHORIA_PRIVY_ID_TOKEN`,
+`EUPHORIA_PRIVY_SESSION`, `EUPHORIA_PRIVY_USER_ID`).
+
+This replaces Copy-as-cURL for session cookies. It does **not** solve
+Turnstile. Solve the captcha yourself in that same normal window if the site
+asks. If the page generates `botSignature` / `deviceFingerprint` / `blob` on a
+real user gesture, the extension forwards those; it does not mint or fake them.
+
+`execute_trade` still requires `botSignature`, `deviceFingerprint`, and
+`approvalPermit`. Manual mode never submits. Auto mode still will not
+live-submit unless `EUPHORIA_DRY_RUN=0` and those three artefacts are present.
+
+## Refresh-token path (existing `src/auth/privy.py`)
+
+Short version: **stop chasing the identity token, capture the refresh token
+instead.** The API client on this branch still uses a Privy identity token:
+
+```
+Authorization: Bearer <identity token>
+```
 
 ## Why the first approach stalled
 
@@ -96,20 +137,25 @@ renew it — it will tell you so explicitly rather than failing obscurely.
 
 ## Security notes
 
-* `.env` and `tokens.json` are gitignored; the token store is written 0600.
-* A refresh token is a full account credential. Treat it like a password.
-* Logging into Euphoria in a browser may rotate/revoke the captured token; if
-  the bot reports `Privy rejected the refresh token`, capture a fresh one.
+* `.env`, `tokens.json`, and `session.json` are gitignored; stores are written 0600.
+* A refresh token or Privy cookie is a full account credential. Treat it like a password.
+* Logging into Euphoria in a browser may rotate/revoke a captured refresh token; if
+  the bot reports `Privy rejected the refresh token`, capture a fresh one or let
+  the extension POST a new session.
+* Do not commit secrets, real cookies, or private keys.
+* Do not attach Chrome with remote debugging, inject webdriver, or scrape the
+  profile cookie database.
 
 ## Still browser-bound
 
-Auth is solved. Submitting a live order still needs three artefacts the
-frontend generates (see `REVERSE_ENGINEERING.md`):
+Session cookies get the control room past Copy-as-cURL. Submitting a live
+order still needs three artefacts the frontend generates (see
+`REVERSE_ENGINEERING.md`):
 
 | Artefact | Why | Path forward |
 |---|---|---|
-| `botSignature` | signed by a registered trade key | registration needs a Cloudflare Turnstile token — genuinely browser-only |
-| `deviceFingerprint` | client fingerprint | spoofable once a real sample is captured |
+| `botSignature` | signed by a registered trade key | Turnstile is user-solved in a normal window; the extension only forwards what the page already produced |
+| `deviceFingerprint` | client fingerprint | forward a real sample from the logged-in tab — do not spoof |
 | `approvalPermit` | EIP-2612 USDM permit | implementable in Python, no browser needed |
 
 `EuphoriaAPI.execute_trade` refuses to submit until all three are present and

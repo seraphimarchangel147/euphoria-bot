@@ -1,0 +1,50 @@
+#euphoria-bot-overlay {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483646;
+  width: 260px;
+  padding: 10px 12px;
+  background: #161a20;
+  color: #e8edf5;
+  border: 1px solid #2a3140;
+  border-radius: 10px;
+  font: 12px/1.4 ui-sans-serif, system-ui, sans-serif;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+#euphoria-bot-overlay .ebo-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+#euphoria-bot-overlay .ebo-pill {
+  font-size: 10px;
+  border: 1px solid #2a3140;
+  border-radius: 99px;
+  padding: 1px 6px;
+  color: #f5c14a;
+}
+#euphoria-bot-overlay .ebo-bias {
+  font-size: 20px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+#euphoria-bot-overlay .ebo-bias.up { color: #3dd68c; }
+#euphoria-bot-overlay .ebo-bias.down { color: #ff6b6b; }
+#euphoria-bot-overlay .ebo-bias.flat { color: #8b95a8; }
+#euphoria-bot-overlay .ebo-reason { margin: 6px 0; }
+#euphoria-bot-overlay .ebo-meta { color: #8b95a8; font-size: 11px; }
+#euphoria-bot-overlay .ebo-actions { display: flex; gap: 6px; margin: 8px 0 4px; }
+#euphoria-bot-overlay button {
+  background: #222833;
+  color: #e8edf5;
+  border: 1px solid #2a3140;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-weight: 600;
+}

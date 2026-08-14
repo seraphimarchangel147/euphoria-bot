@@ -8,8 +8,12 @@ tap-trading platform on MegaETH (chain 4326).
 Euphoria is **server-mediated**. Trades do not go direct-to-contract:
 
 ```
-oracle price -> risk check -> EIP-712 sign -> tRPC API -> server matches -> on-chain
+ticks (extension or Redstone) -> think signal -> risk -> EIP-712 sign -> tRPC API
 ```
+
+The Python process still does **not** speak the authenticated ~10Hz Euphoria
+WebSocket. Redstone HTTP is the fallback. Live page ticks arrive only if you
+load the Chrome extension on a logged-in tab.
 
 See [docs/REVERSE_ENGINEERING.md](docs/REVERSE_ENGINEERING.md) for the decoded
 protocol and [docs/AUTH.md](docs/AUTH.md) for authentication.
@@ -18,10 +22,13 @@ protocol and [docs/AUTH.md](docs/AUTH.md) for authentication.
 
 | Component | Status | Notes |
 |---|---|---|
-| Price oracle (Redstone) | Working | live ETH/BTC, staleness-guarded |
-| EIP-712 signing | Working | sign + self-recover verified, 43 tests |
+| Control room | Working | `python -m src.ui` — localhost dashboard + start/stop/think |
+| Think signal | Working | 5s ETH momentum / breakout (`src/analytics/signal.py`) |
+| Chrome extension | Working | unpacked MV3: prices, session cookies, /trade overlay |
+| Price oracle (Redstone) | Working | fallback when extension ticks are stale |
+| EIP-712 signing | Working | sign + self-recover verified |
 | Risk engine | Working | size / balance / open-count / daily-loss breaker |
-| Privy auth | Working | self-renewing via refresh token (docs/AUTH.md) |
+| Privy auth | Working | refresh token (existing) + cookies via extension/env |
 | API client | Working | tRPC query/mutate, retries, typed errors |
 | Trade assembly | Working | verified end-to-end in dry run |
 | Live submission | Blocked | needs botSignature (Turnstile), deviceFingerprint, approvalPermit |
@@ -41,9 +48,11 @@ geo-block and Privy auth, and exits non-zero if the bot is not ready.
 ## Usage
 
 ```bash
+python3 -m src.ui                      # operator control room (127.0.0.1:8765)
+python3 -m src.control                 # same server
 python3 -m src.monitor.price_monitor   # price alerts (optional Discord webhook)
-python3 -m src.trader.auto_trader      # trade loop (DRY_RUN=1 by default)
-python3 -m pytest                      # 43 tests
+python3 -m src.trader.auto_trader      # one-shot trade loop (DRY_RUN=1 by default)
+python3 -m pytest
 ```
 
 ```python
@@ -51,6 +60,45 @@ from src.trader.auto_trader import EuphoriaTrader
 trader = EuphoriaTrader()          # DRY_RUN unless EUPHORIA_DRY_RUN=0
 print(trader.trade("ETH", 2.5))    # live price -> risk -> sign -> dry-run payload
 ```
+
+## Control room
+
+```bash
+python3 -m src.ui
+```
+
+Binds **127.0.0.1 only** (default port `8765`, override with
+`EUPHORIA_CONTROL_PORT`). Open http://127.0.0.1:8765/
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/status` | running/stopped, mode, dry_run, last quotes, last decision, last error |
+| GET | `/think` | current signal: bias, confidence, reason, suggested cell/side/size or `"no trade"` |
+| POST | `/start` `/stop` | operator run switch |
+| POST | `/mode` | `{"mode":"manual"}` or `{"mode":"auto"}` |
+| POST | `/session` | extension posts `{cookies, privyUserId, quotes?}` |
+
+**Manual** only publishes think / overlay. It never submits.
+
+**Auto** still will not live-submit unless `EUPHORIA_DRY_RUN=0` **and**
+`botSignature`, `deviceFingerprint`, and `approvalPermit` are present. Dry-run
+stays the default.
+
+The dashboard is start/stop, manual vs auto, a dry-run badge, ETH/BTC ticks,
+a "what I'm thinking" card, and a recent-decisions log.
+
+## Chrome extension
+
+Load unpacked from [`extension/`](extension/README.md):
+
+1. Use a normal (non-debug) Chrome profile already logged into Euphoria.
+2. Start the local UI (`python -m src.ui`).
+3. `chrome://extensions` → Developer mode → Load unpacked → `extension/`.
+4. Pin it. Open `/trade`.
+
+Three jobs: forward ~10Hz page prices, POST session cookies to localhost, draw
+an advisory overlay. It does not enable remote debugging, solve Turnstile, or
+fake fingerprints. Details in [docs/AUTH.md](docs/AUTH.md).
 
 ## Safety
 

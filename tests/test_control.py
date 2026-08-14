@@ -1,0 +1,243 @@
+"""Control room start/stop, mode, think, session ingest. No live network."""
+import json
+import logging
+import threading
+import time
+from pathlib import Path
+
+import httpx
+import pytest
+
+from src.analytics.signal import Tick
+from src.control.room import ControlError, ControlRoom
+from src.control.server import make_server
+
+
+def _room(tmp_path: Path, **kw) -> ControlRoom:
+    kw.setdefault("enable_oracle", False)
+    kw.setdefault("dry_run", True)
+    kw.setdefault("session_path", tmp_path / "session.json")
+    kw.setdefault("token_path", tmp_path / "tokens.json")
+    return ControlRoom(**kw)
+
+
+def _up_ticks(now: float) -> list[Tick]:
+    return [
+        Tick("ETH", 3000.0 + i * 0.6, now - 5 + i * 5 / 7, source="test")
+        for i in range(8)
+    ]
+
+
+def test_start_stop_toggles_running(tmp_path):
+    room = _room(tmp_path)
+    assert room.running is False
+    room.start()
+    assert room.running is True
+    room.stop()
+    assert room.running is False
+    room.close()
+
+
+def test_mode_manual_and_auto(tmp_path):
+    room = _room(tmp_path)
+    assert room.mode == "manual"
+    room.set_mode("auto")
+    assert room.mode == "auto"
+    room.set_mode("manual")
+    assert room.mode == "manual"
+    with pytest.raises(ControlError):
+        room.set_mode("yolo")
+    room.close()
+
+
+def test_think_from_canned_ticks(tmp_path):
+    room = _room(tmp_path)
+    now = time.time()
+    for t in _up_ticks(now):
+        room.ticks.push(t.symbol, t.price, t.ts, source="test")
+    sig = room.think()
+    assert sig.bias == "up"
+    assert "tap up" in sig.reason
+    status = room.status()
+    assert status["think"]["bias"] == "up"
+    assert "ETH" in status["quotes"]
+    room.close()
+
+
+def test_manual_never_calls_submit(tmp_path):
+    called = []
+    room = _room(tmp_path, submit_fn=lambda sig, sess: called.append(sig), dry_run=False)
+    room.set_mode("manual")
+    now = time.time()
+    for t in _up_ticks(now):
+        room.ticks.push(t.symbol, t.price, t.ts, source="test")
+    room._maybe_act(room.think())
+    assert called == []
+    assert room.last_decision["action"] == "think"
+    room.close()
+
+
+def test_auto_dry_run_does_not_submit(tmp_path):
+    called = []
+    room = _room(tmp_path, submit_fn=lambda sig, sess: called.append(sig), dry_run=True)
+    room.set_mode("auto")
+    now = time.time()
+    for t in _up_ticks(now):
+        room.ticks.push(t.symbol, t.price, t.ts, source="test")
+    room._maybe_act(room.think())
+    assert called == []
+    assert room.last_decision["action"] == "dry-run"
+    room.close()
+
+
+def test_auto_live_with_artefacts_calls_submit(tmp_path):
+    called = []
+    room = _room(tmp_path, submit_fn=lambda sig, sess: called.append((sig.bias, sess.has_live_artefacts())), dry_run=False)
+    room.set_mode("auto")
+    room.ingest_session({
+        "botSignature": "0xbot",
+        "deviceFingerprint": "fp",
+        "approvalPermit": "0xpermit",
+    })
+    now = time.time()
+    for t in _up_ticks(now):
+        room.ticks.push(t.symbol, t.price, t.ts, source="test")
+    room._maybe_act(room.think())
+    assert called == [("up", True)]
+    assert room.last_decision["action"] == "submitted"
+    room.close()
+
+
+def test_auto_live_without_artefacts_is_blocked(tmp_path):
+    called = []
+    room = _room(tmp_path, submit_fn=lambda sig, sess: called.append(sig), dry_run=False)
+    room.set_mode("auto")
+    now = time.time()
+    for t in _up_ticks(now):
+        room.ticks.push(t.symbol, t.price, t.ts, source="test")
+    room._maybe_act(room.think())
+    assert called == []
+    assert room.last_decision["action"] == "blocked"
+    room.close()
+
+
+def test_session_persists_0600_and_never_logs_secrets(tmp_path, caplog):
+    room = _room(tmp_path)
+    caplog.set_level(logging.DEBUG)
+    secret = "SUPERSECRET_COOKIE_VALUE_9f3"
+    room.ingest_session({
+        "cookies": {
+            "privy-token": secret,
+            "privy-id-token": "IDTOKEN",
+            "privy-session": "SESS",
+        },
+        "privyUserId": "did:privy:abc",
+        "quotes": [{"symbol": "ETH", "price": 3010.5, "ts": time.time()}],
+    })
+    session_path = tmp_path / "session.json"
+    token_path = tmp_path / "tokens.json"
+    assert session_path.exists()
+    assert oct(session_path.stat().st_mode & 0o777) == "0o600"
+    assert oct(token_path.stat().st_mode & 0o777) == "0o600"
+    saved = json.loads(session_path.read_text())
+    assert saved["cookies"]["privy-token"] == secret
+    assert saved["privyUserId"] == "did:privy:abc"
+    tokens = json.loads(token_path.read_text())
+    assert tokens["cookies"]["privy-token"] == secret
+    assert secret not in caplog.text
+    assert "IDTOKEN" not in caplog.text
+    assert "SESS" not in caplog.text
+    public = room.status()["session"]
+    assert public["has_cookies"] is True
+    assert "privy-token" in public["cookie_names"]
+    assert secret not in json.dumps(public)
+    room.close()
+
+
+def test_session_merges_without_clobbering_refresh_token(tmp_path):
+    token_path = tmp_path / "tokens.json"
+    token_path.write_text(json.dumps({
+        "refresh_token": "keep-me",
+        "identity_token": "id-1",
+        "access_token": "acc-1",
+        "expires_at": 1,
+    }))
+    room = _room(tmp_path, token_path=token_path)
+    room.ingest_session({"cookies": {"privy-token": "c1"}})
+    saved = json.loads(token_path.read_text())
+    assert saved["refresh_token"] == "keep-me"
+    assert saved["identity_token"] == "id-1"
+    assert saved["cookies"]["privy-token"] == "c1"
+    room.close()
+
+
+def _serve(room: ControlRoom):
+    httpd = make_server(room, host="127.0.0.1", port=0)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    return httpd, httpd.server_address[1]
+
+
+def test_http_start_stop_and_think(tmp_path):
+    room = _room(tmp_path)
+    now = time.time()
+    for t in _up_ticks(now):
+        room.ticks.push(t.symbol, t.price, t.ts, source="test")
+    httpd, port = _serve(room)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        status = httpx.get(f"{base}/status", timeout=3.0).json()
+        assert status["running"] is False
+        assert status["mode"] == "manual"
+        assert status["dry_run"] is True
+        started = httpx.post(f"{base}/start", timeout=3.0).json()
+        assert started["running"] is True
+        stopped = httpx.post(f"{base}/stop", timeout=3.0).json()
+        assert stopped["running"] is False
+        httpx.post(f"{base}/mode", json={"mode": "auto"}, timeout=3.0)
+        assert httpx.get(f"{base}/status", timeout=3.0).json()["mode"] == "auto"
+        think = httpx.get(f"{base}/think", timeout=3.0).json()
+        assert think["bias"] == "up"
+        assert "reason" in think
+        dash = httpx.get(f"{base}/", timeout=3.0)
+        assert dash.status_code == 200
+        assert "What I'm thinking" in dash.text
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        room.close()
+
+
+def test_http_session_redacts_and_feeds_quotes(tmp_path, caplog):
+    room = _room(tmp_path)
+    httpd, port = _serve(room)
+    caplog.set_level(logging.DEBUG)
+    secret = "HTTP_SECRET_COOKIE"
+    try:
+        resp = httpx.post(
+            f"http://127.0.0.1:{port}/session",
+            json={
+                "cookies": {"privy-token": secret, "privy-id-token": "x", "privy-session": "y"},
+                "privyUserId": "user-1",
+                "quotes": [{"symbol": "ETH", "price": 2222.0, "ts": time.time()}],
+            },
+            timeout=3.0,
+        )
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["session"]["has_cookies"] is True
+        assert secret not in resp.text
+        assert secret not in caplog.text
+        think = httpx.get(f"http://127.0.0.1:{port}/think", timeout=3.0).json()
+        assert think["asset"] == "ETH"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        room.close()
+
+
+def test_make_server_rejects_non_localhost(tmp_path):
+    room = _room(tmp_path)
+    with pytest.raises(ValueError, match="localhost only"):
+        make_server(room, host="0.0.0.0", port=0)
+    room.close()

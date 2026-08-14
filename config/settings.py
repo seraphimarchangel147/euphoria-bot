@@ -47,6 +47,14 @@ PRIVY_CLIENT = os.environ.get("EUPHORIA_PRIVY_CLIENT", "react-auth:2.13.4")
 TOKEN_STORE = Path(
     os.environ.get("EUPHORIA_TOKEN_STORE", str(Path.home() / ".euphoria" / "tokens.json"))
 )
+# Extension / env cookie session (mode 0600). Separate from the Privy refresh bundle.
+SESSION_STORE = Path(
+    os.environ.get("EUPHORIA_SESSION_STORE", str(Path.home() / ".euphoria" / "session.json"))
+)
+
+# --- Operator control room (localhost only) --------------------------------
+CONTROL_HOST = "127.0.0.1"
+CONTROL_PORT = int(os.environ.get("EUPHORIA_CONTROL_PORT", "8765"))
 
 # --- Proxy (geo-block bypass) ---------------------------------------------
 PROXY_URL = os.environ.get("EUPHORIA_PROXY", "") or None
