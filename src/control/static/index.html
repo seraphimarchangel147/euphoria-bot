@@ -129,13 +129,16 @@
       if (!ts) return "";
       return new Date(ts * 1000).toLocaleTimeString();
     }
-    function fmtSuggested(sug, hint) {
+    function fmtSuggested(sug, hint, looking) {
       if (!sug || sug === "no trade") return "no trade";
       const line = hint || sug.hint || sug.label || sug.cell || "nearby square";
-      if (sug.cell_x != null && sug.cell_y != null) {
-        return line + " · cell " + sug.cell_x + "," + sug.cell_y;
-      }
-      return line;
+      const cell = (sug.cell_x != null && sug.cell_y != null)
+        ? " · cell " + sug.cell_x + "," + sug.cell_y
+        : "";
+      const look = Array.isArray(looking) && looking.length
+        ? " · looking at " + looking.map((t) => (t.side || "") + (t.distance || "")).join(", ")
+        : "";
+      return line + cell + look;
     }
     async function post(path, body) {
       const r = await fetch(path, {
@@ -178,7 +181,7 @@
       $("confBar").style.width = Math.round(conf * 100) + "%";
       $("hint").textContent = t.hint || t.reason || "waiting for ticks";
       $("reason").textContent = t.reason || "";
-      $("suggested").textContent = fmtSuggested(t.suggested, t.hint);
+      $("suggested").textContent = fmtSuggested(t.suggested, t.hint, t.looking_at);
       const rows = (status.decisions || []).slice().reverse();
       $("log").innerHTML = rows.map((d) =>
         "<tr><td>" + fmtTime(d.ts) + "</td><td>" + (d.action || "") +

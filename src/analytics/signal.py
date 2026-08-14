@@ -47,6 +47,7 @@ class Suggestion:
     cell_x: int | None = None
     cell_y: int | None = None
     cell_height: float = 0.0
+    looking_at: tuple = ()
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -61,6 +62,7 @@ class Signal:
     asset: str = "ETH"
     momentum_pct: float = 0.0
     hint: str = "no trade"
+    looking_at: tuple = ()
 
     def to_dict(self) -> dict:
         suggested: dict | str
@@ -74,6 +76,7 @@ class Signal:
             "reason": self.reason,
             "suggested": suggested,
             "hint": self.hint,
+            "looking_at": [dict(t) if isinstance(t, dict) else t for t in self.looking_at],
             "asset": self.asset,
             "momentum_pct": self.momentum_pct,
         }
@@ -137,20 +140,59 @@ def _cell_height(last: float, cell_height: float | None, grid: dict[str, Any] | 
     return max(last * DEFAULT_CELL_BPS, 1e-8)
 
 
-def _map_cell(side: str, distance: int, grid: dict[str, Any] | None) -> tuple[int | None, int | None]:
-    """Best-effort cellX/cellY if the page told us where the current square is."""
+def _grid_num(grid: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        raw = grid.get(key)
+        if raw is None:
+            continue
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _current_indices(grid: dict[str, Any] | None) -> tuple[int | None, int | None]:
+    """Current time/price cell from live page state (gridX/gridY) or origin aliases."""
     if not grid:
         return None, None
-    ox = grid.get("cell_x", grid.get("cellX", grid.get("origin_x")))
-    oy = grid.get("cell_y", grid.get("cellY", grid.get("origin_y")))
-    if ox is None or oy is None:
+    gx = _grid_num(grid, "grid_x", "gridX")
+    gy = _grid_num(grid, "grid_y", "gridY")
+    now = _grid_num(grid, "now_ms", "now", "timestamp_ms")
+    dur = _grid_num(grid, "square_duration", "squareDuration") or 5000.0
+    price = _grid_num(grid, "price", "current_price", "currentPrice", "startPrice")
+    dpl = _grid_num(
+        grid, "dollars_per_line", "dollarsPerLine", "price_interval", "priceInterval", "cell_height"
+    )
+    if gx is None and now is not None and dur > 0:
+        gx = now // dur
+    if gy is None and price is not None and dpl and dpl > 0:
+        gy = price // dpl
+    if gx is None:
+        gx = _grid_num(grid, "cell_x", "cellX", "origin_x")
+    if gy is None:
+        gy = _grid_num(grid, "cell_y", "cellY", "origin_y")
+    if gx is None or gy is None:
         return None, None
-    try:
-        cx = int(ox) + 1  # next 5s column
-        cy = int(oy) + distance if side == "up" else int(oy) - distance
-    except (TypeError, ValueError):
+    return int(gx), int(gy)
+
+
+def _map_cell(side: str, distance: int, grid: dict[str, Any] | None) -> tuple[int | None, int | None]:
+    """Next 5s column, one (or two) cells above/below the current price row."""
+    gx, gy = _current_indices(grid)
+    if gx is None or gy is None:
         return None, None
+    cx = gx + 1
+    cy = gy + distance if side == "up" else gy - distance
     return cx, cy
+
+
+def _looking_at(grid: dict[str, Any] | None) -> tuple:
+    tiles = []
+    for side, distance in (("up", 1), ("down", 1)):
+        cx, cy = _map_cell(side, distance, grid)
+        tiles.append({"side": side, "distance": distance, "cell_x": cx, "cell_y": cy})
+    return tuple(tiles)
 
 
 def _square_copy(side: str, distance: int) -> tuple[str, str, str]:
@@ -200,6 +242,8 @@ def compute_signal(
         and ((btc_mom > 0 and mom > 0) or (btc_mom < 0 and mom < 0))
     )
 
+    looking = _looking_at(grid)
+
     if flips >= 2 and rng > 2.0 * max(net, height * 0.25):
         return Signal(
             bias="flat",
@@ -207,6 +251,7 @@ def compute_signal(
             reason="ETH tape is choppy over last 5s → no trade",
             suggested="no trade",
             hint="no trade",
+            looking_at=looking,
             momentum_pct=round(mom_pct, 4),
         )
 
@@ -217,6 +262,7 @@ def compute_signal(
             reason=f"ETH {mom_pct:+.2f}% over last 5s, quiet tape → no trade",
             suggested="no trade",
             hint="no trade",
+            looking_at=looking,
             momentum_pct=round(mom_pct, 4),
         )
 
@@ -244,6 +290,7 @@ def compute_signal(
             reason=f"ETH {mom_pct:+.2f}% over last 5s{extra} → weak, no trade",
             suggested="no trade",
             hint="no trade",
+            looking_at=looking,
             momentum_pct=round(mom_pct, 4),
         )
 
@@ -258,6 +305,7 @@ def compute_signal(
         cell_x=cell_x,
         cell_y=cell_y,
         cell_height=round(height, 8),
+        looking_at=looking,
     )
     reason = f"ETH {mom_pct:+.2f}% over last 5s{extra} → {hint}"
     return Signal(
@@ -266,6 +314,7 @@ def compute_signal(
         reason=reason,
         suggested=suggested,
         hint=hint,
+        looking_at=looking,
         momentum_pct=round(mom_pct, 4),
     )
 

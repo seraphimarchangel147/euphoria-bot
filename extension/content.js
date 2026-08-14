@@ -88,7 +88,7 @@ function ensureOverlay() {
       <button type="button" id="ebo-start">Start</button>
       <button type="button" id="ebo-stop">Stop</button>
     </div>
-    <div id="ebo-note" class="ebo-meta">advisory — you tap</div>
+    <div id="ebo-note" class="ebo-meta">tiles on the grid · you tap</div>
   `;
   document.documentElement.appendChild(root);
   document.getElementById("ebo-start").addEventListener("click", () => {
@@ -105,6 +105,7 @@ function refreshOverlay() {
   chrome.runtime.sendMessage({ type: "status" }, (resp) => {
     if (!resp || !resp.status) {
       document.getElementById("ebo-hint").textContent = "helper offline — start python -m src.ui";
+      window.postMessage({ source: SOURCE, type: "think", payload: null }, "*");
       return;
     }
     const st = resp.status;
@@ -125,26 +126,8 @@ function refreshOverlay() {
       st.mode === "manual"
         ? "manual — advisory only, you tap"
         : (st.dry_run ? "auto dry-run — will not live-submit" : "auto live — still needs the three artefacts");
-    highlightSquare(sug);
+    window.postMessage({ source: SOURCE, type: "think", payload: th }, "*");
   });
-}
-
-function clearHighlight() {
-  document.querySelectorAll(".euphoria-helper-hit").forEach((el) => {
-    el.classList.remove("euphoria-helper-hit");
-  });
-}
-
-function highlightSquare(sug) {
-  clearHighlight();
-  if (!sug || sug === "no trade") return;
-  const x = sug.cell_x;
-  const y = sug.cell_y;
-  if (x == null || y == null) return;
-  const el = document.querySelector(
-    `[data-cell-x="${x}"][data-cell-y="${y}"], [data-cellx="${x}"][data-celly="${y}"]`
-  );
-  if (el) el.classList.add("euphoria-helper-hit");
 }
 
 injectPageHook();

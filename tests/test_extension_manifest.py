@@ -32,3 +32,9 @@ def test_extension_docs_the_three_jobs():
     assert "webdriver" not in banned.lower()
     assert "turnstileToken" not in banned
     assert "solveCaptcha" not in banned
+    inject = (ROOT / "inject.js").read_text()
+    assert "getCellScreenBounds" in inject
+    assert "euphoria-helper-layer" in inject
+    assert "pointer-events" in (ROOT / "overlay.css").read_text()
+    assert "gridX" in inject
+    assert "click()" not in inject

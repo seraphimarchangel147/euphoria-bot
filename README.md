@@ -100,10 +100,11 @@ Load unpacked from [`extension/`](extension/README.md):
 3. `chrome://extensions` → Developer mode → Load unpacked → `extension/`.
 4. Pin it. Open `/trade`.
 
-The overlay shows start/stop and what it's thinking — e.g. "nearest square
-above, ~5s, touch once". If the page grid exposes `data-cell-x` / `data-cell-y`,
-that square is outlined; otherwise the helper says nearest-up / nearest-down.
-Manual mode is advisory. Details in [docs/AUTH.md](docs/AUTH.md).
+The overlay sits on the live `/trade` canvas: faint highlight on the nearby
+tiles it is looking at, stronger highlight + label on the selected tile
+(next 5s column, one cell above/below current price). A small card still
+shows start/stop and the one-line hint. Manual mode is advisory. Details in
+[docs/AUTH.md](docs/AUTH.md).
 
 ## Safety
 

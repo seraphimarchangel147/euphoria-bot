@@ -99,6 +99,22 @@ def test_maps_cell_coords_when_page_grid_is_known():
     assert sig.suggested.cell_x == 4
     assert sig.suggested.cell_y == 8
     assert sig.suggested.cell_height == 1.5
+    assert any(t["cell_x"] == 4 and t["cell_y"] == 8 for t in sig.looking_at)
+
+
+def test_maps_live_gridX_gridY_and_price_interval():
+    t0 = 1_700_000_000.0
+    ticks = _ramp("ETH", 3000.0, 3003.6, 8, t0)
+    sig = compute_signal(
+        ticks,
+        now=t0 + 5.0,
+        grid={"now_ms": 25_000, "square_duration": 5_000, "price": 3000.2, "dollars_per_line": 0.5},
+    )
+    # current col = 25000/5000 = 5, next = 6; price row = 3000.2/0.5 = 6000; up → 6001
+    assert sig.suggested.cell_x == 6
+    assert sig.suggested.cell_y == 6001
+    downs = [t for t in sig.looking_at if t["side"] == "down"]
+    assert downs and downs[0]["cell_y"] == 5999
 
 
 def test_old_ticks_outside_window_ignored():
