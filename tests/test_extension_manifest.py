@@ -25,7 +25,8 @@ def test_extension_docs_the_three_jobs():
     assert "prices" in text
     assert "session" in text
     assert "overlay" in text
-    assert "remote debugging" in text or "remote-debugging" in text
+    assert "helper" in text
+    assert "logged-in" in text or "logged in" in text
     banned = (ROOT / "background.js").read_text() + (ROOT / "content.js").read_text() + (ROOT / "inject.js").read_text()
     assert "remote-debugging" not in banned
     assert "webdriver" not in banned.lower()

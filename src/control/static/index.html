@@ -80,8 +80,9 @@
         <button id="btnAuto" type="button">Auto</button>
       </div>
       <p class="meta" style="margin:10px 0 0">
-        Manual publishes think only. Auto still will not live-submit unless
-        <code>EUPHORIA_DRY_RUN=0</code> and botSignature / deviceFingerprint / approvalPermit are present.
+        Helper for a logged-in tab. Manual only shows what it's thinking.
+        Auto still will not live-submit unless <code>EUPHORIA_DRY_RUN=0</code>
+        and botSignature / deviceFingerprint / approvalPermit are present.
       </p>
       <p id="err" class="err"></p>
     </section>
@@ -104,10 +105,11 @@
     <section class="card full">
       <h2>What I'm thinking</h2>
       <div id="bias" class="think-bias flat">flat</div>
+      <div id="hint" class="reason">waiting for ticks</div>
       <div class="bar"><span id="confBar" style="width:0%"></span></div>
       <div id="conf" class="meta">confidence 0.00</div>
-      <p id="reason" class="reason">waiting for ticks</p>
-      <div id="suggested" class="meta">suggested: no trade</div>
+      <p id="reason" class="meta">—</p>
+      <div id="suggested" class="meta">no trade</div>
     </section>
     <section class="card full">
       <h2>Recent decisions</h2>
@@ -126,6 +128,14 @@
     function fmtTime(ts) {
       if (!ts) return "";
       return new Date(ts * 1000).toLocaleTimeString();
+    }
+    function fmtSuggested(sug, hint) {
+      if (!sug || sug === "no trade") return "no trade";
+      const line = hint || sug.hint || sug.label || sug.cell || "nearby square";
+      if (sug.cell_x != null && sug.cell_y != null) {
+        return line + " · cell " + sug.cell_x + "," + sug.cell_y;
+      }
+      return line;
     }
     async function post(path, body) {
       const r = await fetch(path, {
@@ -166,9 +176,9 @@
       const conf = Number(t.confidence || 0);
       $("conf").textContent = "confidence " + conf.toFixed(2);
       $("confBar").style.width = Math.round(conf * 100) + "%";
-      $("reason").textContent = t.reason || "waiting for ticks";
-      const sug = t.suggested;
-      $("suggested").textContent = "suggested: " + (typeof sug === "string" ? sug : JSON.stringify(sug));
+      $("hint").textContent = t.hint || t.reason || "waiting for ticks";
+      $("reason").textContent = t.reason || "";
+      $("suggested").textContent = fmtSuggested(t.suggested, t.hint);
       const rows = (status.decisions || []).slice().reverse();
       $("log").innerHTML = rows.map((d) =>
         "<tr><td>" + fmtTime(d.ts) + "</td><td>" + (d.action || "") +

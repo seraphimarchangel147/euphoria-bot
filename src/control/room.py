@@ -43,7 +43,8 @@ class ControlRoom:
         self._submit_fn = submit_fn
         self.session_path = session_path
         self.token_path = token_path
-        self.size = size if size is not None else min(1.0, settings.MAX_TRADE_USDM)
+        self.size = size if size is not None else min(0.10, settings.MAX_TRADE_USDM)
+        self.grid: dict[str, Any] | None = None
 
         self._lock = threading.Lock()
         self.running = False
@@ -90,9 +91,16 @@ class ControlRoom:
         log.info("control mode=%s", mode)
         return self.status()
 
+    def set_grid(self, grid: dict[str, Any] | None) -> None:
+        if isinstance(grid, dict) and grid:
+            self.grid = dict(grid)
+
     def ingest_quotes(self, quotes: Any, source: str = "extension") -> int:
         if quotes is None:
             return 0
+        if isinstance(quotes, dict) and "quotes" in quotes:
+            self.set_grid(quotes.get("grid"))
+            quotes = quotes.get("quotes")
         if isinstance(quotes, dict) and not any(k in quotes for k in ("symbol", "asset", "price")):
             # {"ETH": 3000, "BTC": {"price": 1}} or {"ETH": {"price": 3000, "ts": ...}}
             items = []
@@ -112,6 +120,8 @@ class ControlRoom:
             raise ControlError("session body must be a JSON object")
         quotes = payload.get("quotes")
         n_quotes = self.ingest_quotes(quotes, source="extension")
+        if payload.get("grid"):
+            self.set_grid(payload.get("grid"))
         with self._lock:
             changed = apply_payload(self.session, payload, now=time.time())
             view = self.session.public_view()
@@ -128,7 +138,7 @@ class ControlRoom:
 
     def think(self) -> Signal:
         with self._lock:
-            sig = compute_signal(self.ticks, size=self.size)
+            sig = compute_signal(self.ticks, size=self.size, grid=self.grid)
             self.last_signal = sig
             return sig
 

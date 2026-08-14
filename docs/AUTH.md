@@ -1,12 +1,11 @@
 # Authentication
 
-Two ways to get credentials into the bot. Neither one uses a debug Chrome
-profile, CDP, or cookie-scraping from disk.
+Two ways to hand the helper a session from a normal logged-in Chrome tab.
 
 ## Extension → localhost (preferred for the control room)
 
-Log into Euphoria in a **normal** Chrome window. Load the unpacked extension
-from `extension/`. While that tab is logged in, the extension POSTs:
+Log into Euphoria in a normal Chrome window. Load the unpacked extension from
+`extension/`. While that tab is logged in, the extension POSTs:
 
 ```
 POST http://127.0.0.1:8765/session
@@ -26,10 +25,10 @@ mode `0600` and never logs the values. You can also drop the same cookie names
 into the environment (`EUPHORIA_PRIVY_TOKEN`, `EUPHORIA_PRIVY_ID_TOKEN`,
 `EUPHORIA_PRIVY_SESSION`, `EUPHORIA_PRIVY_USER_ID`).
 
-This replaces Copy-as-cURL for session cookies. It does **not** solve
-Turnstile. Solve the captcha yourself in that same normal window if the site
-asks. If the page generates `botSignature` / `deviceFingerprint` / `blob` on a
-real user gesture, the extension forwards those; it does not mint or fake them.
+This replaces Copy-as-cURL for session cookies. If the site shows Turnstile,
+solve it yourself in that same window. If you tap a square and the page
+already produced `botSignature` / `deviceFingerprint` / `blob`, the helper
+forwards those so you do not have to paste them.
 
 `execute_trade` still requires `botSignature`, `deviceFingerprint`, and
 `approvalPermit`. Manual mode never submits. Auto mode still will not
@@ -143,8 +142,7 @@ renew it — it will tell you so explicitly rather than failing obscurely.
   the bot reports `Privy rejected the refresh token`, capture a fresh one or let
   the extension POST a new session.
 * Do not commit secrets, real cookies, or private keys.
-* Do not attach Chrome with remote debugging, inject webdriver, or scrape the
-  profile cookie database.
+* Use a normal logged-in Chrome tab; the extension reads the session from there.
 
 ## Still browser-bound
 
@@ -154,8 +152,8 @@ order still needs three artefacts the frontend generates (see
 
 | Artefact | Why | Path forward |
 |---|---|---|
-| `botSignature` | signed by a registered trade key | Turnstile is user-solved in a normal window; the extension only forwards what the page already produced |
-| `deviceFingerprint` | client fingerprint | forward a real sample from the logged-in tab — do not spoof |
+| `botSignature` | signed by a registered trade key | complete Turnstile in the logged-in tab if asked; the helper only forwards what the page already produced |
+| `deviceFingerprint` | client fingerprint | forwarded from the logged-in tab when the page has one |
 | `approvalPermit` | EIP-2612 USDM permit | implementable in Python, no browser needed |
 
 `EuphoriaAPI.execute_trade` refuses to submit until all three are present and

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Euphoria Operator Bridge",
+  "name": "Euphoria helper",
   "version": "0.1.0",
-  "description": "Forwards logged-in Euphoria prices, session cookies, and an advisory overlay to the local control room. Does not debug Chrome, solve captchas, or mint trade artefacts.",
+  "description": "Helper overlay for a logged-in Euphoria tab: page prices, session cookies, and what the local control room is thinking.",
   "permissions": ["cookies", "storage", "alarms"],
   "host_permissions": [
     "https://euphoria.finance/*",

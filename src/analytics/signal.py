@@ -1,23 +1,27 @@
-"""Explainable v1 think signal: 5-second ETH momentum / breakout.
+"""Explainable think signal: which nearby 5s square is likely to get touched.
 
-Consumes a short tick buffer (extension WS/DOM ticks, or Redstone fallback).
-Never submits a trade. Callers decide what to do with the Signal.
+Euphoria squares are price zones over a 5-second window. You win if price
+touches the zone once; it does not need to stay there. Closer squares are
+easier (lower multiplier); farther squares are harder.
+
+This module only names a nearby square (or "no trade"). It never submits.
 """
 from __future__ import annotations
 
 import time
 from collections import deque
-from dataclasses import asdict, dataclass, field
-from typing import Iterable, Sequence
+from dataclasses import asdict, dataclass
+from typing import Any, Iterable, Sequence
 
 WINDOW_S = 5.0
 MIN_TICKS = 3
-# Moves smaller than this are noise, not a tap.
-FLAT_THRESHOLD = 0.0003  # 3 bps
-# |momentum| at which confidence saturates.
-FULL_MOVE = 0.002  # 20 bps
-QUIET_VOL = 0.0004
-DEFAULT_SIZE = 1.0
+FLAT_THRESHOLD = 0.0003  # 3 bps — no real drift
+# Default band width when the page grid is unknown (same 5 bps heuristic as the trader).
+DEFAULT_CELL_BPS = 0.0005
+# Need to project at least this fraction of one cell to call a nearby touch.
+REACH_NEAREST = 0.4
+MAX_NEAR_DISTANCE = 2
+DEFAULT_SIZE = 0.10  # official default tap is small
 
 
 @dataclass(frozen=True)
@@ -37,6 +41,12 @@ class Suggestion:
     side: str
     size: float
     cell: str
+    distance: int
+    label: str
+    hint: str
+    cell_x: int | None = None
+    cell_y: int | None = None
+    cell_height: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -50,6 +60,7 @@ class Signal:
     suggested: Suggestion | str  # Suggestion or "no trade"
     asset: str = "ETH"
     momentum_pct: float = 0.0
+    hint: str = "no trade"
 
     def to_dict(self) -> dict:
         suggested: dict | str
@@ -62,6 +73,7 @@ class Signal:
             "confidence": self.confidence,
             "reason": self.reason,
             "suggested": suggested,
+            "hint": self.hint,
             "asset": self.asset,
             "momentum_pct": self.momentum_pct,
         }
@@ -73,6 +85,7 @@ def _waiting(reason: str, asset: str = "ETH") -> Signal:
         confidence=0.0,
         reason=reason,
         suggested="no trade",
+        hint="no trade",
         asset=asset,
     )
 
@@ -91,12 +104,63 @@ def _momentum(ticks: Sequence[Tick]) -> float:
     return (last - first) / first
 
 
-def _range_vol(ticks: Sequence[Tick]) -> float:
+def _range_width(ticks: Sequence[Tick]) -> float:
     prices = [t.price for t in ticks]
-    mid = (max(prices) + min(prices)) / 2.0
-    if mid <= 0:
-        return 0.0
-    return (max(prices) - min(prices)) / mid
+    return max(prices) - min(prices)
+
+
+def _sign_flips(ticks: Sequence[Tick]) -> int:
+    flips = 0
+    prev = 0
+    for a, b in zip(ticks, ticks[1:]):
+        delta = b.price - a.price
+        if delta == 0:
+            continue
+        sign = 1 if delta > 0 else -1
+        if prev and sign != prev:
+            flips += 1
+        prev = sign
+    return flips
+
+
+def _cell_height(last: float, cell_height: float | None, grid: dict[str, Any] | None) -> float:
+    if cell_height is not None and cell_height > 0:
+        return float(cell_height)
+    if grid:
+        raw = grid.get("cell_height") or grid.get("price_interval") or grid.get("priceInterval")
+        try:
+            parsed = float(raw)
+        except (TypeError, ValueError):
+            parsed = 0.0
+        if parsed > 0:
+            return parsed
+    return max(last * DEFAULT_CELL_BPS, 1e-8)
+
+
+def _map_cell(side: str, distance: int, grid: dict[str, Any] | None) -> tuple[int | None, int | None]:
+    """Best-effort cellX/cellY if the page told us where the current square is."""
+    if not grid:
+        return None, None
+    ox = grid.get("cell_x", grid.get("cellX", grid.get("origin_x")))
+    oy = grid.get("cell_y", grid.get("cellY", grid.get("origin_y")))
+    if ox is None or oy is None:
+        return None, None
+    try:
+        cx = int(ox) + 1  # next 5s column
+        cy = int(oy) + distance if side == "up" else int(oy) - distance
+    except (TypeError, ValueError):
+        return None, None
+    return cx, cy
+
+
+def _square_copy(side: str, distance: int) -> tuple[str, str, str]:
+    if side == "up":
+        if distance <= 1:
+            return "nearest-up", "nearest square above", "nearest square above, ~5s, touch once"
+        return "next-up", "next square above", "next square above, ~5s, touch once"
+    if distance <= 1:
+        return "nearest-down", "nearest square below", "nearest square below, ~5s, touch once"
+    return "next-down", "next square below", "next square below, ~5s, touch once"
 
 
 def compute_signal(
@@ -105,8 +169,10 @@ def compute_signal(
     now: float | None = None,
     window_s: float = WINDOW_S,
     size: float = DEFAULT_SIZE,
+    cell_height: float | None = None,
+    grid: dict[str, Any] | None = None,
 ) -> Signal:
-    """5s ETH momentum with optional BTC confirmation. No I/O."""
+    """Name the nearby square most likely to get touched in the next ~5s. No I/O."""
     now = time.time() if now is None else now
     if isinstance(ticks, TickBuffer):
         seq = ticks.snapshot(now=now)
@@ -117,10 +183,14 @@ def compute_signal(
     if len(eth) < MIN_TICKS:
         return _waiting("waiting for ETH ticks")
 
+    first, last = eth[0].price, eth[-1].price
     mom = _momentum(eth)
-    vol = _range_vol(eth)
-    abs_mom = abs(mom)
     mom_pct = mom * 100.0
+    net = abs(last - first)
+    rng = _range_width(eth)
+    flips = _sign_flips(eth)
+    height = _cell_height(last, cell_height, grid)
+    reachable = net / height if height > 0 else 0.0
 
     btc = _in_window(seq, "BTC", now, window_s)
     btc_mom = _momentum(btc) if len(btc) >= 2 else None
@@ -130,48 +200,72 @@ def compute_signal(
         and ((btc_mom > 0 and mom > 0) or (btc_mom < 0 and mom < 0))
     )
 
-    if abs_mom < FLAT_THRESHOLD:
-        conf = round(min(0.35, 0.10 + (FLAT_THRESHOLD - abs_mom) * 200), 3)
+    if flips >= 2 and rng > 2.0 * max(net, height * 0.25):
         return Signal(
             bias="flat",
-            confidence=conf,
-            reason=f"ETH {mom_pct:+.2f}% over last 5s, below threshold → no trade",
+            confidence=round(min(0.35, 0.12 + flips * 0.04), 3),
+            reason="ETH tape is choppy over last 5s → no trade",
             suggested="no trade",
+            hint="no trade",
+            momentum_pct=round(mom_pct, 4),
+        )
+
+    if abs(mom) < FLAT_THRESHOLD or reachable < REACH_NEAREST:
+        return Signal(
+            bias="flat",
+            confidence=round(min(0.3, 0.10 + (FLAT_THRESHOLD - min(abs(mom), FLAT_THRESHOLD)) * 200), 3),
+            reason=f"ETH {mom_pct:+.2f}% over last 5s, quiet tape → no trade",
+            suggested="no trade",
+            hint="no trade",
             momentum_pct=round(mom_pct, 4),
         )
 
     bias = "up" if mom > 0 else "down"
-    raw = min(1.0, abs_mom / FULL_MOVE)
-    if vol > max(abs_mom * 2.0, QUIET_VOL * 3):
-        raw *= 0.6
-        vol_word = "choppy"
-    elif vol <= QUIET_VOL:
-        raw = min(1.0, raw * 1.1)
-        vol_word = "vol quiet"
-    else:
-        vol_word = "vol normal"
+    # Touch-once: the nearest square on the drift side is the most likely hit.
+    # Far cells are never named, even on a large print.
+    distance = min(1, MAX_NEAR_DISTANCE)
 
+    cell, label, hint = _square_copy(bias, distance)
+    cell_x, cell_y = _map_cell(bias, distance, grid)
+
+    raw = min(1.0, abs(mom) / 0.002)
+    if rng > abs(last - first) * 1.8:
+        raw *= 0.75
     extra = ""
     if btc_confirms:
-        raw = min(1.0, raw + 0.15)
-        extra = ", BTC confirming"
+        raw = min(1.0, raw + 0.12)
+        extra = ", BTC agreeing"
 
     confidence = round(max(0.0, min(1.0, raw)), 3)
-    action = "tap up" if bias == "up" else "tap down"
-    reason = f"ETH {mom_pct:+.2f}% over last 5s, {vol_word}{extra} → {action}"
+    if confidence < 0.4:
+        return Signal(
+            bias=bias,
+            confidence=confidence,
+            reason=f"ETH {mom_pct:+.2f}% over last 5s{extra} → weak, no trade",
+            suggested="no trade",
+            hint="no trade",
+            momentum_pct=round(mom_pct, 4),
+        )
 
-    suggested: Suggestion | str
-    if confidence >= 0.4:
-        suggested = Suggestion(asset="ETH", side=bias, size=size, cell=f"ETH-{bias}")
-    else:
-        suggested = "no trade"
-        reason = f"ETH {mom_pct:+.2f}% over last 5s, {vol_word}{extra} → weak, no trade"
-
+    suggested = Suggestion(
+        asset="ETH",
+        side=bias,
+        size=size,
+        cell=cell,
+        distance=distance,
+        label=label,
+        hint=hint,
+        cell_x=cell_x,
+        cell_y=cell_y,
+        cell_height=round(height, 8),
+    )
+    reason = f"ETH {mom_pct:+.2f}% over last 5s{extra} → {hint}"
     return Signal(
         bias=bias,
         confidence=confidence,
         reason=reason,
         suggested=suggested,
+        hint=hint,
         momentum_pct=round(mom_pct, 4),
     )
 

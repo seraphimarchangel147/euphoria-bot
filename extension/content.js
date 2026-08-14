@@ -55,6 +55,9 @@ window.addEventListener("message", (ev) => {
   if (data.type === "artefacts" && data.payload) {
     chrome.runtime.sendMessage({ type: "artefacts", artefacts: data.payload });
   }
+  if (data.type === "grid" && data.payload) {
+    chrome.runtime.sendMessage({ type: "session", grid: data.payload });
+  }
 });
 
 function sendSession() {
@@ -73,18 +76,19 @@ function ensureOverlay() {
   root.id = "euphoria-bot-overlay";
   root.innerHTML = `
     <div class="ebo-head">
-      <span>bot</span>
+      <span>helper</span>
       <span id="ebo-dry" class="ebo-pill">dry-run</span>
       <span id="ebo-mode" class="ebo-pill">manual</span>
     </div>
     <div id="ebo-bias" class="ebo-bias flat">flat</div>
+    <div id="ebo-hint" class="ebo-reason">connecting to local helper…</div>
     <div id="ebo-conf" class="ebo-meta">confidence —</div>
-    <div id="ebo-reason" class="ebo-reason">connecting to local control room…</div>
+    <div id="ebo-reason" class="ebo-meta"></div>
     <div class="ebo-actions">
       <button type="button" id="ebo-start">Start</button>
       <button type="button" id="ebo-stop">Stop</button>
     </div>
-    <div id="ebo-note" class="ebo-meta">advisory in manual mode</div>
+    <div id="ebo-note" class="ebo-meta">advisory — you tap</div>
   `;
   document.documentElement.appendChild(root);
   document.getElementById("ebo-start").addEventListener("click", () => {
@@ -100,7 +104,7 @@ function refreshOverlay() {
   if (!root) return;
   chrome.runtime.sendMessage({ type: "status" }, (resp) => {
     if (!resp || !resp.status) {
-      document.getElementById("ebo-reason").textContent = "control room offline (start python -m src.ui)";
+      document.getElementById("ebo-hint").textContent = "helper offline — start python -m src.ui";
       return;
     }
     const st = resp.status;
@@ -113,12 +117,34 @@ function refreshOverlay() {
     biasEl.className = "ebo-bias " + bias;
     document.getElementById("ebo-conf").textContent =
       "confidence " + Number(th.confidence || 0).toFixed(2);
-    document.getElementById("ebo-reason").textContent = th.reason || "waiting for ticks";
+    const sug = th.suggested;
+    const hint = th.hint || (sug && sug.hint) || th.reason || "waiting for ticks";
+    document.getElementById("ebo-hint").textContent = hint;
+    document.getElementById("ebo-reason").textContent = th.reason || "";
     document.getElementById("ebo-note").textContent =
       st.mode === "manual"
-        ? "manual — advisory only, never submits"
+        ? "manual — advisory only, you tap"
         : (st.dry_run ? "auto dry-run — will not live-submit" : "auto live — still needs the three artefacts");
+    highlightSquare(sug);
   });
+}
+
+function clearHighlight() {
+  document.querySelectorAll(".euphoria-helper-hit").forEach((el) => {
+    el.classList.remove("euphoria-helper-hit");
+  });
+}
+
+function highlightSquare(sug) {
+  clearHighlight();
+  if (!sug || sug === "no trade") return;
+  const x = sug.cell_x;
+  const y = sug.cell_y;
+  if (x == null || y == null) return;
+  const el = document.querySelector(
+    `[data-cell-x="${x}"][data-cell-y="${y}"], [data-cellx="${x}"][data-celly="${y}"]`
+  );
+  if (el) el.classList.add("euphoria-helper-hit");
 }
 
 injectPageHook();

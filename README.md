@@ -23,8 +23,8 @@ protocol and [docs/AUTH.md](docs/AUTH.md) for authentication.
 | Component | Status | Notes |
 |---|---|---|
 | Control room | Working | `python -m src.ui` — localhost dashboard + start/stop/think |
-| Think signal | Working | 5s ETH momentum / breakout (`src/analytics/signal.py`) |
-| Chrome extension | Working | unpacked MV3: prices, session cookies, /trade overlay |
+| Think signal | Working | nearby 5s touch square (`src/analytics/signal.py`) |
+| Chrome extension | Working | helper overlay in a logged-in tab: prices, session, /trade |
 | Price oracle (Redstone) | Working | fallback when extension ticks are stale |
 | EIP-712 signing | Working | sign + self-recover verified |
 | Risk engine | Working | size / balance / open-count / daily-loss breaker |
@@ -73,7 +73,7 @@ Binds **127.0.0.1 only** (default port `8765`, override with
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/status` | running/stopped, mode, dry_run, last quotes, last decision, last error |
-| GET | `/think` | current signal: bias, confidence, reason, suggested cell/side/size or `"no trade"` |
+| GET | `/think` | current signal: bias, confidence, nearby square (or `"no trade"`), one-line reason |
 | POST | `/start` `/stop` | operator run switch |
 | POST | `/mode` | `{"mode":"manual"}` or `{"mode":"auto"}` |
 | POST | `/session` | extension posts `{cookies, privyUserId, quotes?}` |
@@ -85,20 +85,25 @@ Binds **127.0.0.1 only** (default port `8765`, override with
 stays the default.
 
 The dashboard is start/stop, manual vs auto, a dry-run badge, ETH/BTC ticks,
-a "what I'm thinking" card, and a recent-decisions log.
+a "what I'm thinking" card (nearby square or no trade), and a recent-decisions log.
+
+Think v1 names the **nearest square** the 5s tape is likely to *touch once*
+(official rule: price only has to enter the zone). Choppy or quiet tape →
+`no trade`. It will not point at far cells.
 
 ## Chrome extension
 
 Load unpacked from [`extension/`](extension/README.md):
 
-1. Use a normal (non-debug) Chrome profile already logged into Euphoria.
-2. Start the local UI (`python -m src.ui`).
+1. Stay in a normal Chrome profile already logged into Euphoria.
+2. Start the local helper (`python -m src.ui`).
 3. `chrome://extensions` → Developer mode → Load unpacked → `extension/`.
 4. Pin it. Open `/trade`.
 
-Three jobs: forward ~10Hz page prices, POST session cookies to localhost, draw
-an advisory overlay. It does not enable remote debugging, solve Turnstile, or
-fake fingerprints. Details in [docs/AUTH.md](docs/AUTH.md).
+The overlay shows start/stop and what it's thinking — e.g. "nearest square
+above, ~5s, touch once". If the page grid exposes `data-cell-x` / `data-cell-y`,
+that square is outlined; otherwise the helper says nearest-up / nearest-down.
+Manual mode is advisory. Details in [docs/AUTH.md](docs/AUTH.md).
 
 ## Safety
 

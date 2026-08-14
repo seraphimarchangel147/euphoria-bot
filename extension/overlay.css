@@ -48,3 +48,7 @@
   cursor: pointer;
   font-weight: 600;
 }
+.euphoria-helper-hit {
+  outline: 2px solid #6ea8fe !important;
+  outline-offset: 1px;
+}

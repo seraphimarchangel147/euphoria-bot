@@ -57,7 +57,9 @@ def test_think_from_canned_ticks(tmp_path):
         room.ticks.push(t.symbol, t.price, t.ts, source="test")
     sig = room.think()
     assert sig.bias == "up"
-    assert "tap up" in sig.reason
+    assert "nearest square above" in sig.reason
+    assert sig.suggested != "no trade"
+    assert sig.suggested.cell == "nearest-up"
     status = room.status()
     assert status["think"]["bias"] == "up"
     assert "ETH" in status["quotes"]
@@ -198,10 +200,12 @@ def test_http_start_stop_and_think(tmp_path):
         assert httpx.get(f"{base}/status", timeout=3.0).json()["mode"] == "auto"
         think = httpx.get(f"{base}/think", timeout=3.0).json()
         assert think["bias"] == "up"
-        assert "reason" in think
+        assert think["hint"] == "nearest square above, ~5s, touch once"
+        assert think["suggested"]["cell"] == "nearest-up"
         dash = httpx.get(f"{base}/", timeout=3.0)
         assert dash.status_code == 200
         assert "What I'm thinking" in dash.text
+        assert "Helper for a logged-in tab" in dash.text
     finally:
         httpd.shutdown()
         httpd.server_close()

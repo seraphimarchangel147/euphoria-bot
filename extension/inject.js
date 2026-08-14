@@ -1,6 +1,4 @@
-/* Page-world hook. Listens to the tab's own prices / WS / user-gesture artefacts.
- * Does not open a second socket, does not mint signatures, does not touch Turnstile.
- */
+/* Page-world hook for the logged-in tab: listen to its own prices / WS / taps. */
 (function () {
   if (window.__euphoriaBridgeInjected) return;
   window.__euphoriaBridgeInjected = true;
@@ -145,6 +143,24 @@
     }
   }
 
+  function scrapeGrid() {
+    const nodes = document.querySelectorAll("[data-cell-x][data-cell-y], [data-cellx][data-celly]");
+    const grid = {};
+    if (nodes.length) {
+      const first = nodes[0];
+      const x = first.getAttribute("data-cell-x") || first.getAttribute("data-cellx");
+      const y = first.getAttribute("data-cell-y") || first.getAttribute("data-celly");
+      if (x != null) grid.cell_x = Number(x);
+      if (y != null) grid.cell_y = Number(y);
+    }
+    const interval =
+      window.priceInterval ||
+      window.__priceInterval ||
+      (window.prices && (window.prices.priceInterval || window.prices.cellHeight));
+    if (Number(interval) > 0) grid.cell_height = Number(interval);
+    if (Object.keys(grid).length) emit("grid", grid);
+  }
+
   function scrapeDom() {
     const root = document.body;
     if (!root) return;
@@ -160,6 +176,7 @@
       }
     }
     if (quotes.length) emit("quotes", quotes);
+    scrapeGrid();
   }
 
   scanGlobals();

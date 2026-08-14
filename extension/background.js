@@ -1,6 +1,4 @@
-/* Local control-room bridge. Jobs: session cookies, price forward, overlay RPC.
- * No remote debugging, no captcha solver, no fingerprint minting.
- */
+/* Helper for a normal logged-in Euphoria tab: session cookies, page prices, overlay. */
 const DEFAULT_PORT = 8765;
 const COOKIE_NAMES = new Set(["privy-token", "privy-id-token", "privy-session"]);
 
@@ -76,6 +74,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg.privyUserId) extra.privyUserId = msg.privyUserId;
       if (msg.artefacts) Object.assign(extra, msg.artefacts);
       if (msg.quotes) extra.quotes = msg.quotes;
+      if (msg.grid) extra.grid = msg.grid;
       sendResponse(await pushSession(extra));
       return;
     }
