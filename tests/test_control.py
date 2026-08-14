@@ -8,8 +8,10 @@ from pathlib import Path
 import httpx
 import pytest
 
+from src.analytics.setups import SETUP_PAYLOAD_KEYS, missing_setup_keys
 from src.analytics.signal import Tick
 from src.analytics.timeframes import TF_KEYS, Bar
+from src.control.overlay_rules import stand_aside
 from src.control.room import ControlError, ControlRoom
 from src.control.server import make_server
 
@@ -181,6 +183,37 @@ def _serve(room: ControlRoom):
     return httpd, httpd.server_address[1]
 
 
+def test_http_think_always_has_locked_setup_keys(tmp_path):
+    room = _room(tmp_path)
+    httpd, port = _serve(room)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        waiting = httpx.get(f"{base}/think", timeout=3.0).json()
+        assert missing_setup_keys(waiting) == []
+        assert waiting["blue_age_s"] is None
+        assert "candidates" in waiting
+        assert "pick" in waiting
+        assert "timeframes" in waiting
+        assert "alignment" in waiting
+        assert "grade" in waiting
+        now = time.time()
+        for t in _up_ticks(now):
+            room.ticks.push(t.symbol, t.price, t.ts, source="test")
+        live = httpx.get(f"{base}/think", timeout=3.0).json()
+        assert missing_setup_keys(live) == []
+        assert live["stall_squares"] in (1, 2)
+        assert live["break_side"] in ("up", "down", None)
+        if live.get("pick"):
+            assert live["blue_age_s"] is not None
+            assert stand_aside(live) is False
+        else:
+            assert live["blue_age_s"] is None
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        room.close()
+
+
 def test_http_start_stop_and_think(tmp_path):
     room = _room(tmp_path)
     now = time.time()
@@ -222,6 +255,17 @@ def test_http_start_stop_and_think(tmp_path):
         assert "wick_squares" in think
         assert "compression_box" in think
         assert "swing_1m" in think
+        assert missing_setup_keys(think) == []
+        assert set(SETUP_PAYLOAD_KEYS) <= set(think)
+        assert think["stall_squares"] in (1, 2)
+        assert think["break_side"] in ("up", "down", None)
+        assert isinstance(think["wick_squares_past"], int)
+        assert "blue_age_s" in think
+        assert think["alignment"]
+        assert "grade" in think
+        assert "candidates" in think
+        assert "pick" in think
+        assert "timeframes" in think
         assert "extension" in status
         assert status["extension"]["connected"] is False
         assert "extBadge" in dash.text
@@ -352,6 +396,8 @@ def test_think_payload_stand_aside_follows_pick(tmp_path):
         assert body["stand_aside"] is False
     else:
         assert body["stand_aside"] is True
+    assert missing_setup_keys(body) == []
+    assert stand_aside(body) == body["stand_aside"]
     room.close()
 
 

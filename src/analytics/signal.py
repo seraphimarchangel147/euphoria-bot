@@ -14,14 +14,18 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable, Sequence
 
 from src.analytics.setups import (
+    SETUP_PAYLOAD_KEYS,
     SetupMemory,
+    attach_setup_clocks,
+    build_setup_payload,
     choose_setup,
     detect_compression,
     detect_swing_1m,
+    empty_setup_payload,
     late_pink_sit,
     pair_lean,
     pink_metrics,
@@ -105,6 +109,7 @@ class Signal:
     pink_age_s: float = 0.0
     range_shrinking: bool = False
     action: str = "sit"
+    setup_metrics: dict = field(default_factory=empty_setup_payload)
 
     def to_dict(self) -> dict:
         suggested: dict | str
@@ -127,7 +132,7 @@ class Signal:
         candidates = [dict(t) if isinstance(t, dict) else t for t in self.looking_at]
         stack = self.tf_stack
         frames = stack.frames_dict() if stack else empty_frames()
-        return {
+        body = {
             "bias": self.bias,
             "confidence": self.confidence,
             "reason": self.reason,
@@ -155,6 +160,11 @@ class Signal:
             "asset": self.asset,
             "momentum_pct": self.momentum_pct,
         }
+        metrics = self.setup_metrics or empty_setup_payload()
+        blank = empty_setup_payload()
+        for key in SETUP_PAYLOAD_KEYS:
+            body[key] = metrics[key] if key in metrics else blank[key]
+        return body
 
 
 def _waiting(
@@ -324,6 +334,7 @@ def _setup_fields(
     pink_age_s: float = 0.0,
     range_shrinking: bool = False,
     action: str = "sit",
+    setup_metrics: dict | None = None,
 ) -> dict[str, Any]:
     return {
         "setup": setup,
@@ -334,7 +345,35 @@ def _setup_fields(
         "pink_age_s": round(float(pink_age_s), 3),
         "range_shrinking": bool(range_shrinking),
         "action": action,
+        "setup_metrics": setup_metrics if setup_metrics is not None else empty_setup_payload(),
     }
+
+
+def _clock_metrics(
+    metrics: dict[str, Any],
+    *,
+    pink,
+    memory: SetupMemory | None,
+    now: float,
+    has_pick: bool,
+) -> dict[str, Any]:
+    if has_pick and memory is not None:
+        memory.mark_blue(now)
+    blue: float | None
+    if not has_pick:
+        blue = None
+    elif memory is not None:
+        blue = memory.blue_age(now)
+        if blue is None:
+            blue = 0.0
+    else:
+        blue = 0.0
+    return attach_setup_clocks(
+        metrics,
+        pink_age_s=pink.age_s,
+        blue_age_s=blue,
+        range_shrinking=pink.shrinking,
+    )
 
 
 def _pick_nearby(
@@ -410,6 +449,17 @@ def compute_signal(
     box_raw = detect_compression(seq, height, now=now)
     box = {"low": box_raw["low"], "high": box_raw["high"]} if box_raw else None
     swing = detect_swing_1m(seq, now=now, ohlc=ohlc)
+    metrics = build_setup_payload(
+        ticks_5s=eth,
+        ticks_all=seq,
+        height=height,
+        stack=stack,
+        now=now,
+        ohlc=ohlc,
+        pink_age_s=pink.age_s,
+        blue_age_s=None,
+        range_shrinking=pink.shrinking,
+    )
     extra_fields = _setup_fields(
         wick_squares=0.0,
         compression_box=box,
@@ -417,6 +467,7 @@ def compute_signal(
         pink_age_s=pink.age_s,
         range_shrinking=pink.shrinking,
         action="sit",
+        setup_metrics=_clock_metrics(metrics, pink=pink, memory=memory, now=now, has_pick=False),
     )
 
     named = choose_setup(
@@ -440,6 +491,9 @@ def compute_signal(
                 action="sit" if named.sit else "tap",
             )
         )
+        extra_fields["setup_metrics"] = _clock_metrics(
+            metrics, pink=pink, memory=memory, now=now, has_pick=not named.sit
+        )
         if named.sit:
             return Signal(
                 bias="flat",
@@ -457,8 +511,6 @@ def compute_signal(
                 **extra_fields,
             )
         suggested = _pick_nearby(named.side or "up", size=size, height=height, grid=grid, looking=looking)
-        if memory is not None:
-            memory.mark_blue()
         extra_fields["action"] = "tap"
         extra_fields["sit_reason"] = ""
         return Signal(
@@ -607,6 +659,7 @@ def compute_signal(
                 pink_age_s=pink.age_s,
                 range_shrinking=pink.shrinking,
                 action="sit",
+                setup_metrics=_clock_metrics(metrics, pink=pink, memory=memory, now=now, has_pick=False),
             )
         )
         return Signal(
@@ -648,8 +701,9 @@ def compute_signal(
     extra_fields["action"] = "tap"
     extra_fields["setup"] = "none"
     extra_fields["sit_reason"] = ""
-    if memory is not None:
-        memory.mark_blue()
+    extra_fields["setup_metrics"] = _clock_metrics(
+        metrics, pink=pink, memory=memory, now=now, has_pick=True
+    )
     return Signal(
         bias=bias,
         confidence=confidence,

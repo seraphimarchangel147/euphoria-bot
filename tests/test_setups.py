@@ -1,10 +1,12 @@
 """A/B setup detectors: stall, compression, sweep, late pink. No network."""
 from src.analytics.setups import (
+    SETUP_PAYLOAD_KEYS,
     SetupMemory,
     detect_compression,
     detect_stall,
     detect_sweep,
     detect_swing_1m,
+    missing_setup_keys,
     pair_lean,
 )
 from src.analytics.signal import Tick, compute_signal
@@ -51,6 +53,11 @@ def test_stall_overlap_sits_without_htf():
     d = sig.to_dict()
     assert d["setup"] == "stall"
     assert d["action"] == "sit"
+    assert missing_setup_keys(d) == []
+    assert d["stall"] is True
+    assert d["stall_squares"] in (1, 2)
+    assert d["new_extreme"] is False
+    assert d["blue_age_s"] is None
 
 
 def test_stall_picks_nearest_back_in_htf_direction():
@@ -66,6 +73,11 @@ def test_stall_picks_nearest_back_in_htf_direction():
     assert sig.suggested.side == "up"
     assert sig.suggested.distance == 1
     assert sig.wick_squares >= 1.0
+    d = sig.to_dict()
+    assert missing_setup_keys(d) == []
+    assert d["stall"] is True
+    assert d["stall_squares"] in (1, 2)
+    assert d["blue_age_s"] is not None
 
 
 def test_compression_sits_inside_box_then_taps_first_break():
@@ -87,6 +99,12 @@ def test_compression_sits_inside_box_then_taps_first_break():
     assert sit.suggested == "no trade"
     assert sit.compression_box is not None
     assert sit.compression_box["low"] <= sit.compression_box["high"]
+    sit_d = sit.to_dict()
+    assert missing_setup_keys(sit_d) == []
+    assert sit_d["compression"] is True
+    assert sit_d["first_close_outside"] is False
+    assert sit_d["break_side"] is None
+    assert sit_d["box_lo"] <= sit_d["box_hi"]
 
     # First close outside the box — one square up only.
     ticks.append(Tick("ETH", box["high"] + 0.8, t0 + 14.8, source="test"))
@@ -96,6 +114,11 @@ def test_compression_sits_inside_box_then_taps_first_break():
     assert brk.suggested != "no trade"
     assert brk.suggested.side == "up"
     assert brk.suggested.distance == 1
+    brk_d = brk.to_dict()
+    assert missing_setup_keys(brk_d) == []
+    assert brk_d["compression"] is True
+    assert brk_d["first_close_outside"] is True
+    assert brk_d["break_side"] == "up"
 
 
 def test_one_square_sweep_reclaims_and_skips_two_plus():
@@ -129,6 +152,13 @@ def test_one_square_sweep_reclaims_and_skips_two_plus():
     assert sig.suggested.distance == 1
     assert sig.swing_1m["high"] == swing_high
     assert 0.75 <= sig.wick_squares < 2.0
+    d = sig.to_dict()
+    assert missing_setup_keys(d) == []
+    assert d["sweep_1m"] is True
+    assert d["swing_1m_hi"] == swing_high
+    assert d["swing_1m_lo"] > 0
+    assert d["wick_squares_past"] >= 1
+    assert d["reclaim"] is True
 
     # 2+ square sweep is skipped.
     two = [
@@ -160,6 +190,10 @@ def test_late_pink_sits_when_range_shrinks_after_two_seconds():
     assert sig.range_shrinking is True
     assert sig.pink_age_s > 2.0
     assert "pink" in sig.sit_reason
+    d = sig.to_dict()
+    assert missing_setup_keys(d) == []
+    assert d["blue_age_s"] is None
+    assert d["range_shrinking"] is True
 
 
 def test_early_blue_still_allowed_in_first_second():
@@ -174,6 +208,10 @@ def test_early_blue_still_allowed_in_first_second():
     assert sig.setup != "late_pink"
     assert sig.suggested != "no trade"
     assert sig.action == "tap"
+    d = sig.to_dict()
+    assert missing_setup_keys(d) == []
+    assert d["blue_age_s"] is not None
+    assert d["blue_age_s"] >= 0
 
 
 def test_pair_lean_requires_agreement():
@@ -202,3 +240,8 @@ def test_think_payload_includes_setup_fields():
     assert d["candidates"]
     assert "pick" in d
     assert set(d["timeframes"]) == set(TF_KEYS)
+    assert missing_setup_keys(d) == []
+    assert d["stall_squares"] in (1, 2)
+    assert d["break_side"] in ("up", "down", None)
+    assert isinstance(d["wick_squares_past"], int)
+    assert set(SETUP_PAYLOAD_KEYS) <= set(d)

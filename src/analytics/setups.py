@@ -12,6 +12,29 @@ from src.analytics.timeframes import TimeframeStack, ticks_to_bars
 
 SETUP_NAMES = ("stall", "compression", "sweep", "late_pink", "none")
 
+# Locked /think setup payload. Do not rename.
+SETUP_PAYLOAD_KEYS = (
+    "stall",
+    "stall_squares",
+    "new_extreme",
+    "stall_broke_against_htf",
+    "compression",
+    "range_squares",
+    "box_lo",
+    "box_hi",
+    "first_close_outside",
+    "break_side",
+    "wick_and_fail",
+    "sweep_1m",
+    "swing_1m_lo",
+    "swing_1m_hi",
+    "wick_squares_past",
+    "reclaim",
+    "pink_age_s",
+    "blue_age_s",
+    "range_shrinking",
+)
+
 
 @dataclass
 class SetupHit:
@@ -39,6 +62,7 @@ class SetupMemory:
     pink_since: float | None = None
     first_htf_lean: str | None = None
     had_blue: bool = False
+    blue_since: float | None = None
     range_peak: float = 0.0
     last_range: float = 0.0
     shrunk: bool = False
@@ -50,6 +74,7 @@ class SetupMemory:
         self.pink_since = now
         self.first_htf_lean = htf if htf in ("up", "down") else None
         self.had_blue = False
+        self.blue_since = None
         self.range_peak = range_sq
         self.last_range = range_sq
         self.shrunk = False
@@ -73,6 +98,7 @@ class SetupMemory:
                 self.pink_since = None
                 self.first_htf_lean = None
                 self.had_blue = False
+                self.blue_since = None
                 self.range_peak = range_sq
                 self.last_range = range_sq
                 self.shrunk = False
@@ -94,13 +120,20 @@ class SetupMemory:
         if len(self.history) > 40:
             self.history = self.history[-40:]
 
-    def mark_blue(self) -> None:
+    def mark_blue(self, now: float | None = None) -> None:
+        if self.blue_since is None:
+            self.blue_since = float(now) if now is not None else None
         self.had_blue = True
 
     def age(self, now: float) -> float:
         if self.pink_since is None:
             return 0.0
         return max(0.0, now - self.pink_since)
+
+    def blue_age(self, now: float) -> float | None:
+        if self.blue_since is None:
+            return None
+        return round(max(0.0, now - self.blue_since), 3)
 
 
 def pair_lean(stack: TimeframeStack | None, *keys: str) -> str | None:
@@ -404,6 +437,179 @@ def late_pink_sit(pink: PinkState, *, would_pick: bool) -> SetupHit | None:
             reason="late pink — candidates >2s, range shrinking, sitting",
         )
     return None
+
+
+def missing_setup_keys(body: dict[str, Any] | None) -> list[str]:
+    if not body:
+        return list(SETUP_PAYLOAD_KEYS)
+    return [key for key in SETUP_PAYLOAD_KEYS if key not in body]
+
+
+def empty_setup_payload() -> dict[str, Any]:
+    return {
+        "stall": False,
+        "stall_squares": 1,
+        "new_extreme": False,
+        "stall_broke_against_htf": False,
+        "compression": False,
+        "range_squares": 0.0,
+        "box_lo": 0.0,
+        "box_hi": 0.0,
+        "first_close_outside": False,
+        "break_side": None,
+        "wick_and_fail": False,
+        "sweep_1m": False,
+        "swing_1m_lo": 0.0,
+        "swing_1m_hi": 0.0,
+        "wick_squares_past": 0,
+        "reclaim": False,
+        "pink_age_s": 0.0,
+        "blue_age_s": None,
+        "range_shrinking": False,
+    }
+
+
+def attach_setup_clocks(
+    payload: dict[str, Any],
+    *,
+    pink_age_s: float,
+    blue_age_s: float | None,
+    range_shrinking: bool,
+) -> dict[str, Any]:
+    out = dict(payload)
+    out["pink_age_s"] = round(float(pink_age_s), 3)
+    out["blue_age_s"] = None if blue_age_s is None else round(float(blue_age_s), 3)
+    out["range_shrinking"] = bool(range_shrinking)
+    return out
+
+
+def _clamp_stall_squares(raw: float) -> int:
+    return 2 if raw >= 1.5 else 1
+
+
+def _wick_and_fail(ticks: Sequence[Any], box_lo: float, box_hi: float, close: float) -> bool:
+    if not ticks:
+        return False
+    hi = max(t.price for t in ticks)
+    lo = min(t.price for t in ticks)
+    poked = hi > box_hi + 1e-12 or lo < box_lo - 1e-12
+    closed_in = box_lo - 1e-12 <= close <= box_hi + 1e-12
+    return bool(poked and closed_in)
+
+
+def _new_extreme(ticks: Sequence[Any], height: float, stall_held: bool) -> bool:
+    if stall_held or len(ticks) < 2 or height <= 0:
+        return False
+    open_px = ticks[0].price
+    last = ticks[-1].price
+    lo = min(t.price for t in ticks)
+    hi = max(t.price for t in ticks)
+    up = (hi - open_px) / height
+    down = (open_px - lo) / height
+    at_high = last >= hi - 1e-12 and up >= 1.0 - 1e-6
+    at_low = last <= lo + 1e-12 and down >= 1.0 - 1e-6
+    return bool(at_high or at_low)
+
+
+def _stall_broke_against_htf(
+    ticks: Sequence[Any],
+    height: float,
+    htf: str | None,
+    stall_held: bool,
+) -> bool:
+    if stall_held or htf not in ("up", "down") or len(ticks) < 3 or height <= 0:
+        return False
+    open_px = ticks[0].price
+    last = ticks[-1].price
+    lo = min(t.price for t in ticks)
+    hi = max(t.price for t in ticks)
+    down = (open_px - lo) / height
+    up = (hi - open_px) / height
+    if htf == "up" and down >= 1.0 - 1e-6 and last <= lo + 0.25 * height:
+        return True
+    if htf == "down" and up >= 1.0 - 1e-6 and last >= hi - 0.25 * height:
+        return True
+    return False
+
+
+def build_setup_payload(
+    *,
+    ticks_5s: Sequence[Any],
+    ticks_all: Sequence[Any],
+    height: float,
+    stack: TimeframeStack | None,
+    now: float,
+    ohlc: dict | None = None,
+    pink_age_s: float = 0.0,
+    blue_age_s: float | None = None,
+    range_shrinking: bool = False,
+) -> dict[str, Any]:
+    """Exact /think setup keys. Always present; booleans stay False when quiet."""
+    out = empty_setup_payload()
+    stall_found = detect_stall(ticks_5s, height) if ticks_5s else None
+    stall_held = stall_found is not None
+    out["stall"] = stall_held
+    if stall_found:
+        out["stall_squares"] = _clamp_stall_squares(float(stall_found["squares"]))
+    elif ticks_5s and height > 0:
+        open_px = ticks_5s[0].price
+        lo = min(t.price for t in ticks_5s)
+        hi = max(t.price for t in ticks_5s)
+        pull = max((open_px - lo) / height, (hi - open_px) / height)
+        if pull >= 1.0 - 1e-6:
+            out["stall_squares"] = _clamp_stall_squares(pull)
+    htf = pair_lean(stack, "1h", "4h")
+    out["new_extreme"] = _new_extreme(ticks_5s, height, stall_held)
+    out["stall_broke_against_htf"] = _stall_broke_against_htf(ticks_5s, height, htf, stall_held)
+
+    comp = detect_compression(ticks_all, height, now=now) if ticks_all else None
+    if ticks_5s:
+        win_lo = min(t.price for t in ticks_5s)
+        win_hi = max(t.price for t in ticks_5s)
+        out["box_lo"] = round(win_lo, 8)
+        out["box_hi"] = round(win_hi, 8)
+        out["range_squares"] = round((win_hi - win_lo) / height, 3) if height > 0 else 0.0
+    if comp:
+        out["compression"] = True
+        out["box_lo"] = round(float(comp["low"]), 8)
+        out["box_hi"] = round(float(comp["high"]), 8)
+        span = float(comp["high"]) - float(comp["low"])
+        out["range_squares"] = round(span / height, 3) if height > 0 else 0.0
+        out["first_close_outside"] = not bool(comp["inside"])
+        if comp["inside"]:
+            out["break_side"] = None
+        else:
+            out["break_side"] = "up" if comp["close"] > comp["high"] else "down"
+        out["wick_and_fail"] = _wick_and_fail(ticks_5s, comp["low"], comp["high"], comp["close"])
+
+    swing = detect_swing_1m(ticks_all, now=now, ohlc=ohlc)
+    if swing:
+        out["swing_1m_lo"] = round(float(swing["low"]), 8)
+        out["swing_1m_hi"] = round(float(swing["high"]), 8)
+        found = detect_sweep(ticks_5s, height, swing) if ticks_5s else None
+        if found:
+            out["sweep_1m"] = True
+            out["wick_squares_past"] = max(1, int(round(float(found["wick"]))))
+            out["reclaim"] = True
+        elif ticks_5s and height > 0:
+            hi = max(t.price for t in ticks_5s)
+            lo = min(t.price for t in ticks_5s)
+            last = ticks_5s[-1].price
+            up = (hi - swing["high"]) / height
+            down = (swing["low"] - lo) / height
+            if up >= 0.75:
+                out["wick_squares_past"] = int(round(up))
+                out["reclaim"] = last < swing["high"] - 1e-12
+            elif down >= 0.75:
+                out["wick_squares_past"] = int(round(down))
+                out["reclaim"] = last > swing["low"] + 1e-12
+
+    return attach_setup_clocks(
+        out,
+        pink_age_s=pink_age_s,
+        blue_age_s=blue_age_s,
+        range_shrinking=range_shrinking,
+    )
 
 
 def choose_setup(

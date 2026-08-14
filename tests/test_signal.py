@@ -1,4 +1,5 @@
 """Canned-tick tests for the nearby-square think signal. No network."""
+from src.analytics.setups import SETUP_PAYLOAD_KEYS, missing_setup_keys
 from src.analytics.signal import Tick, TickBuffer, compute_signal
 from src.analytics.timeframes import TF_KEYS, Bar
 
@@ -163,6 +164,11 @@ def test_to_dict_uses_no_trade_string():
     assert set(d["timeframes"]) == set(TF_KEYS)
     assert d["lesson"] == "waiting"
     assert "waiting" in d["why"]
+    assert missing_setup_keys(d) == []
+    assert d["blue_age_s"] is None
+    assert d["stall"] is False
+    assert d["compression"] is False
+    assert d["sweep_1m"] is False
 
 
 def _ohlc(direction: str) -> dict[str, list[Bar]]:
@@ -263,3 +269,5 @@ def test_overlay_payload_shape_candidates_pick_and_tf_stack():
     assert "wick_squares" in d
     assert "compression_box" in d
     assert "swing_1m" in d
+    assert missing_setup_keys(d) == []
+    assert set(SETUP_PAYLOAD_KEYS) <= set(d)
