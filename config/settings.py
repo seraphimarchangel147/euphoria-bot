@@ -25,9 +25,19 @@ CHAIN_ID = 4326                       # MegaETH mainnet (6343 is TESTNET)
 RPC_URL = os.environ.get("EUPHORIA_RPC_URL", "https://mainnet.megaeth.com/rpc")
 
 # --- Contracts -------------------------------------------------------------
+# Euphoria Vault (ERC-4626 wrapper). Does NOT implement EIP-2612.
 USDM_ADDRESS = "0xdf8248fee58e791149e69f6c61129D471EaFC11E"
 EXCHANGE_ADDRESS = "0x12759afcA690637b425ffbA3265F0Dc2F6242A8D"
 MULTICALL_ADDRESS = "0xca11bde05977b3631167028862be2a173976ca11"
+# Official MegaUSD — the token the frontend actually permits (EIP-2612).
+# Verified on-chain: name "MegaUSD", version "1", eip712Domain + DOMAIN_SEPARATOR.
+USDM_PERMIT_TOKEN = "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7"
+# Spender recovered from a live exchange permit tx (Approval spender = exchange,
+# signature recovers the owner only when spender is EXCHANGE_ADDRESS).
+PERMIT_SPENDER = EXCHANGE_ADDRESS
+# Frontend permits type(uint256).max; deadline ~5 minutes after the tap.
+PERMIT_VALUE = (1 << 256) - 1
+PERMIT_DEADLINE_SECONDS = 300
 
 # --- API -------------------------------------------------------------------
 API_BASE = os.environ.get("EUPHORIA_API_BASE", "https://api.mainnet.euphoria.finance")
@@ -47,6 +57,26 @@ PRIVY_CLIENT = os.environ.get("EUPHORIA_PRIVY_CLIENT", "react-auth:2.13.4")
 TOKEN_STORE = Path(
     os.environ.get("EUPHORIA_TOKEN_STORE", str(Path.home() / ".euphoria" / "tokens.json"))
 )
+# Live API auth is Cookie: privy-id-token + privy-token + privy-session.
+# Bearer 401s. These are pass-through from the user's own browser / refresh mint.
+PRIVY_ID_TOKEN = os.environ.get("EUPHORIA_PRIVY_ID_TOKEN") or os.environ.get(
+    "EUPHORIA_PRIVY_IDENTITY_TOKEN", ""
+)
+PRIVY_ACCESS_TOKEN = os.environ.get("EUPHORIA_PRIVY_TOKEN", "")
+PRIVY_COOKIE = os.environ.get("EUPHORIA_COOKIE", "")
+PRIVY_USER_ID = os.environ.get("EUPHORIA_PRIVY_USER_ID", "")
+PRIVY_SESSION = os.environ.get("EUPHORIA_PRIVY_SESSION", "privy.euphoria.finance")
+
+# --- Browser session artefacts (pass-through only) -------------------------
+# Captured from the user's own logged-in Euphoria tab after they solve
+# Turnstile. The bot never generates, solves, or spoofs these.
+# Env vars win over ~/.euphoria/session.json (see src/auth/session.py).
+SESSION_STORE = Path(
+    os.environ.get("EUPHORIA_SESSION_STORE", str(Path.home() / ".euphoria" / "session.json"))
+)
+BOT_SIGNATURE = os.environ.get("EUPHORIA_BOT_SIGNATURE", "")
+DEVICE_FINGERPRINT = os.environ.get("EUPHORIA_DEVICE_FINGERPRINT", "")
+BLOB = os.environ.get("EUPHORIA_BLOB", "")
 
 # --- Proxy (geo-block bypass) ---------------------------------------------
 PROXY_URL = os.environ.get("EUPHORIA_PROXY", "") or None

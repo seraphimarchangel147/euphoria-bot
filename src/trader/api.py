@@ -92,9 +92,24 @@ class EuphoriaAPI:
     def get_game_state(self) -> Any:
         return self.query("users.getGameState")
 
+    @staticmethod
+    def profile_input(privy_user_id: str) -> dict[str, str]:
+        """tRPC input for users.getProfile — not null, not an empty object."""
+        uid = (privy_user_id or "").strip()
+        if not uid:
+            raise EuphoriaAPIError(
+                "users.getProfile needs privyUserId "
+                "(EUPHORIA_PRIVY_USER_ID or the sub claim of privy-id-token)"
+            )
+        return {"privyUserId": uid}
+
+    def get_profile(self, privy_user_id: str | None = None) -> Any:
+        uid = (privy_user_id or "").strip() or self.auth.privy_user_id()
+        return self.query("users.getProfile", self.profile_input(uid))
+
     def whoami(self) -> Any:
-        """Cheapest authenticated call -- use it to validate the identity token."""
-        return self.get_tier()
+        """Authenticated probe: users.getProfile({privyUserId}). Not getTier."""
+        return self.get_profile()
 
     @staticmethod
     def to_payload(req: TradeRequest, signature: str, nonce: int, **extra: Any) -> dict[str, Any]:

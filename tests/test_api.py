@@ -54,5 +54,48 @@ def test_execute_trade_reports_missing_artefacts():
     api = EuphoriaAPI.__new__(EuphoriaAPI)   # no network
     with pytest.raises(EuphoriaAPIError) as exc:
         api.execute_trade({"signature": "0xsig"})
-    for field in ("botSignature", "deviceFingerprint", "approvalPermit"):
-        assert field in str(exc.value)
+    assert str(exc.value) == (
+        "executeTrade payload is incomplete, missing: "
+        "botSignature, deviceFingerprint, approvalPermit"
+    )
+
+
+def test_profile_input_shape():
+    assert EuphoriaAPI.profile_input("did:privy:abc") == {"privyUserId": "did:privy:abc"}
+    with pytest.raises(EuphoriaAPIError, match="privyUserId"):
+        EuphoriaAPI.profile_input("")
+    with pytest.raises(EuphoriaAPIError, match="privyUserId"):
+        EuphoriaAPI.profile_input("   ")
+
+
+def test_whoami_calls_get_profile_not_get_tier():
+    api = EuphoriaAPI.__new__(EuphoriaAPI)
+
+    class FakeAuth:
+        def privy_user_id(self):
+            return "did:privy:whoami"
+
+    seen: dict = {}
+
+    def fake_query(procedure, payload=None):
+        seen["procedure"] = procedure
+        seen["payload"] = payload
+        return {"ok": True}
+
+    api.auth = FakeAuth()
+    api.query = fake_query
+    assert api.whoami() == {"ok": True}
+    assert seen["procedure"] == "users.getProfile"
+    assert seen["payload"] == {"privyUserId": "did:privy:whoami"}
+
+
+def test_execute_trade_blob_is_optional():
+    api = EuphoriaAPI.__new__(EuphoriaAPI)
+    with pytest.raises(EuphoriaAPIError) as exc:
+        api.execute_trade({
+            "signature": "0xsig",
+            "botSignature": "0xbot",
+            "deviceFingerprint": "fp",
+        })
+    assert str(exc.value) == "executeTrade payload is incomplete, missing: approvalPermit"
+    assert "blob" not in str(exc.value)
