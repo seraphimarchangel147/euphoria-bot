@@ -11,7 +11,7 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from config import settings
 from src.control.room import ControlError, ControlRoom
@@ -55,7 +55,8 @@ class ControlHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path in ("/", "/index.html"):
             html = (STATIC_DIR / "index.html").read_bytes()
             self._send(200, html, "text/html; charset=utf-8")
@@ -66,7 +67,44 @@ class ControlHandler(BaseHTTPRequestHandler):
         if path == "/think":
             self._send(*_json_bytes(self.room.think_payload()))
             return
+        if path == "/events":
+            self._events(parsed)
+            return
         self._send(*_json_bytes({"error": "not found"}, 404))
+
+    def _events(self, parsed) -> None:
+        qs = parse_qs(parsed.query)
+        wants_poll = "after" in qs or "wait" in qs
+        if wants_poll:
+            try:
+                after = int((qs.get("after") or ["0"])[0] or 0)
+            except ValueError:
+                after = 0
+            try:
+                wait = float((qs.get("wait") or ["10"])[0] or 10)
+            except ValueError:
+                wait = 10.0
+            self.room.wait_for(after, timeout=min(max(wait, 0.0), 25.0))
+            self._send(*_json_bytes(self.room.snapshot(refresh_think=True)))
+            return
+        self.send_response(200)
+        self._cors()
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        after = -1
+        try:
+            while not self.room._stop.is_set():
+                snap = self.room.snapshot(refresh_think=True)
+                payload = json.dumps(snap).encode("utf-8")
+                self.wfile.write(b"event: state\ndata: " + payload + b"\n\n")
+                self.wfile.flush()
+                after = int(snap.get("seq") or 0)
+                self.room.wait_for(after, timeout=15.0)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path

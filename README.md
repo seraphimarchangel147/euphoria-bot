@@ -72,8 +72,9 @@ Binds **127.0.0.1 only** (default port `8765`, override with
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/status` | running/stopped, mode, dry_run, last quotes, last decision, last error |
+| GET | `/status` | running/stopped, mode, dry_run, last quotes, last decision, last error, extension link |
 | GET | `/think` | current signal: nearby 5s pick/candidates, higher-TF stack (1m/5m/1h/4h/D/M), reason |
+| GET | `/events` | SSE snapshot (or `?after=&wait=` long-poll) — same payload the overlay paints |
 | POST | `/start` `/stop` | operator run switch |
 | POST | `/mode` | `{"mode":"manual"}` or `{"mode":"auto"}` |
 | POST | `/session` | extension posts `{cookies, privyUserId, quotes?}` |
@@ -84,9 +85,11 @@ Binds **127.0.0.1 only** (default port `8765`, override with
 `botSignature`, `deviceFingerprint`, and `approvalPermit` are present. Dry-run
 stays the default.
 
-The dashboard is a live indicator: start/stop, manual vs auto, a dry-run badge,
-ETH/BTC ticks, the nearby square (or a clear no-trade why), the higher-TF stack,
-and a last-window hit/miss. Manual never submits — you tap.
+The dashboard and the `/trade` overlay are one control room. Start, stop, and
+mode on either side hit the same `ControlRoom`. `/events` pushes the shared
+snapshot so a click on one surface shows on the other within a beat. The
+dashboard shows whether the trade-tab helper is connected and whether ticks
+are **from tab** (not only Redstone). Manual never submits — you tap.
 
 Think names the **nearest square** the 5s tape is likely to *touch once*
 (official rule: price only has to enter the zone). Separately it reads a

@@ -53,3 +53,11 @@ def test_extension_docs_the_three_jobs():
     assert "ebo-grade" in content
     assert "indicator" in content
     assert "click()" not in content
+    assert "EventSource" in content
+    assert "/events" in content
+    assert "ebo-manual" in content
+    assert "ebo-auto" in content
+    assert "euphoria-sync" in content
+    bg = (ROOT / "background.js").read_text()
+    assert 'msg.type === "mode"' in bg
+    assert "euphoria-sync" in bg

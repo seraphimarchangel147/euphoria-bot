@@ -11,7 +11,9 @@ A small helper that sits in a normal logged-in Chrome tab. Three jobs:
 1. Stay in a normal Chrome profile already logged into [euphoria.finance](https://euphoria.finance).
 2. Start the local helper: `python -m src.ui` (listens on `127.0.0.1:8765`).
 3. Open `chrome://extensions` → enable Developer mode → **Load unpacked** → select this `extension/` folder.
-4. Pin it. Open `/trade`. After pulling this branch, click **Reload** on the extension card so the canvas overlay loads.
+4. Pin it. Open `/trade` and http://127.0.0.1:8765/ together. After pulling this branch, click **Reload** on the extension card so the live sync loads.
+
+Start / stop / manual / auto on either surface update the same control room. The overlay opens `/events` on localhost so a dashboard click shows on the tiles without waiting for a stale poll. The service worker stays awake while the trade tab holds a port (`euphoria-sync`).
 
 Default port is `8765`. To change it, from the service-worker console:
 

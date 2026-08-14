@@ -94,8 +94,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse(await post("/stop"));
       return;
     }
+    if (msg.type === "mode") {
+      sendResponse(await post("/mode", { mode: msg.mode || "manual" }));
+      return;
+    }
   })();
   return true;
+});
+
+chrome.runtime.onConnect.addListener((p) => {
+  if (p.name !== "euphoria-sync") return;
+  /* Port from the trade tab keeps this worker alive while the tab is open. */
 });
 
 chrome.cookies.onChanged.addListener((change) => {

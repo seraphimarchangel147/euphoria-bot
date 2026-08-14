@@ -78,6 +78,7 @@
     <span id="dry" class="badge dry">dry-run</span>
     <span id="run" class="badge off">stopped</span>
     <span id="modeBadge" class="badge off">manual</span>
+    <span id="extBadge" class="badge off">tab offline</span>
   </header>
   <main>
     <section class="card">
@@ -134,6 +135,12 @@
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
+    function fmtSrc(q) {
+      if (!q) return "";
+      const src = q.source || "";
+      if (src === "page" || src === "extension" || src === "dom" || src === "ws") return "from tab";
+      return src;
+    }
     function fmtPx(q) {
       if (!q || q.price == null) return "—";
       return Number(q.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -176,8 +183,11 @@
       const q = status.quotes || {};
       $("ethPx").textContent = fmtPx(q.ETH);
       $("btcPx").textContent = fmtPx(q.BTC);
-      $("ethSrc").textContent = q.ETH ? q.ETH.source || "" : "";
-      $("btcSrc").textContent = q.BTC ? q.BTC.source || "" : "";
+      $("ethSrc").textContent = fmtSrc(q.ETH);
+      $("btcSrc").textContent = fmtSrc(q.BTC);
+      const ext = status.extension || {};
+      $("extBadge").textContent = ext.connected ? "tab connected" : "tab offline";
+      $("extBadge").className = "badge " + (ext.connected ? "on" : "off");
       $("err").textContent = status.last_error || "";
       const s = status.session || {};
       $("session").textContent =
@@ -217,23 +227,35 @@
         "</td><td>" + (d.bias || "") + "</td><td>" + (d.detail || d.reason || "") + "</td></tr>"
       ).join("");
     }
+    function applySnapshot(status) {
+      paint(status, status.think || {});
+    }
     async function refresh() {
       try {
-        const [status, think] = await Promise.all([
-          fetch("/status").then((r) => r.json()),
-          fetch("/think").then((r) => r.json()),
-        ]);
-        paint(status, think);
+        const status = await fetch("/status").then((r) => r.json());
+        applySnapshot(status);
       } catch (e) {
         $("err").textContent = "control room unreachable";
       }
     }
-    $("btnStart").onclick = () => post("/start").then(refresh);
-    $("btnStop").onclick = () => post("/stop").then(refresh);
-    $("btnManual").onclick = () => post("/mode", { mode: "manual" }).then(refresh);
-    $("btnAuto").onclick = () => post("/mode", { mode: "auto" }).then(refresh);
+    function connectEvents() {
+      try {
+        const es = new EventSource("/events");
+        es.addEventListener("state", (ev) => {
+          try { applySnapshot(JSON.parse(ev.data)); } catch (e) { /* ignore */ }
+        });
+        es.onerror = () => { /* EventSource retries; poll is the backup */ };
+      } catch (e) {
+        /* older browsers */
+      }
+    }
+    $("btnStart").onclick = () => post("/start").then(applySnapshot);
+    $("btnStop").onclick = () => post("/stop").then(applySnapshot);
+    $("btnManual").onclick = () => post("/mode", { mode: "manual" }).then(applySnapshot);
+    $("btnAuto").onclick = () => post("/mode", { mode: "auto" }).then(applySnapshot);
     refresh();
-    setInterval(refresh, 500);
+    connectEvents();
+    setInterval(refresh, 2000);
   </script>
 </body>
 </html>

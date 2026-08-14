@@ -20,6 +20,8 @@ ORACLE_POLL_S = 5.0
 OHLC_TTL_S = 60.0
 LOOP_S = 0.5
 DECISION_KEEP = 40
+EXTENSION_STALE_S = 20.0
+EXTENSION_SOURCES = frozenset({"extension", "page", "dom", "ws"})
 
 
 class ControlError(ValueError):
@@ -53,6 +55,7 @@ class ControlRoom:
         self.grid: dict[str, Any] | None = None
 
         self._lock = threading.Lock()
+        self._cond = threading.Condition(self._lock)
         self.running = False
         self.mode: Mode = "manual"
         self.ticks = TickBuffer()
@@ -70,6 +73,9 @@ class ControlRoom:
         self._ohlc_at = 0.0
         self._last_fingerprint: tuple | None = None
         self.scoreboard = GradeBook()
+        self._seq = 0
+        self._ext_seen: float | None = None
+        self._ext_quote_source: str | None = None
 
     # -- commands -----------------------------------------------------------
     def start(self) -> dict[str, Any]:
@@ -80,6 +86,7 @@ class ControlRoom:
             self._record_unlocked(
                 None, action="start", detail=f"mode={self.mode} dry_run={self.dry_run}"
             )
+            self._notify_unlocked()
         log.info("control started mode=%s dry_run=%s", self.mode, self.dry_run)
         return self.status()
 
@@ -87,6 +94,7 @@ class ControlRoom:
         with self._lock:
             self.running = False
             self._record_unlocked(None, action="stop", detail="operator stop")
+            self._notify_unlocked()
         log.info("control stopped")
         return self.status()
 
@@ -97,6 +105,7 @@ class ControlRoom:
         with self._lock:
             self.mode = mode
             self._record_unlocked(None, action="mode", detail=mode)
+            self._notify_unlocked()
         log.info("control mode=%s", mode)
         return self.status()
 
@@ -122,6 +131,19 @@ class ControlRoom:
         elif isinstance(quotes, dict):
             quotes = [{**quotes, "source": quotes.get("source") or source}]
         n = self.ticks.extend(quotes if isinstance(quotes, list) else [])
+        ext_source = source if source in EXTENSION_SOURCES else None
+        if isinstance(quotes, list):
+            for item in quotes:
+                raw = item.get("source") if isinstance(item, dict) else getattr(item, "source", None)
+                if raw in EXTENSION_SOURCES:
+                    ext_source = str(raw)
+                    break
+        if n or ext_source:
+            with self._cond:
+                if ext_source:
+                    self._ext_seen = time.time()
+                    self._ext_quote_source = ext_source
+                self._notify_unlocked()
         return n
 
     def ingest_session(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -136,6 +158,8 @@ class ControlRoom:
             view = self.session.public_view()
             if changed:
                 persist_session(self.session, session_path=self.session_path, token_path=self.token_path)
+            self._ext_seen = time.time()
+            self._notify_unlocked()
         log.info(
             "session ingest: cookies=%s privyUserId=%s artefacts=%s quotes=%d",
             view["cookie_names"],
@@ -145,7 +169,7 @@ class ControlRoom:
         )
         return {"ok": True, "session": view, "quotes_ingested": n_quotes}
 
-    def think(self, now: float | None = None) -> Signal:
+    def think(self, now: float | None = None, *, notify: bool = False) -> Signal:
         ohlc = self._refresh_ohlc()
         now = time.time() if now is None else now
         with self._lock:
@@ -159,6 +183,8 @@ class ControlRoom:
                 grid=self.grid,
                 last_price=last.price if last else None,
             )
+            if notify:
+                self._notify_unlocked()
             return sig
 
     def payload(self, sig: Signal | None = None) -> dict[str, Any]:
@@ -188,12 +214,50 @@ class ControlRoom:
                 "last_error": self.last_error,
                 "think": think,
                 "session": self.session.public_view(),
+                "extension": self._extension_view_unlocked(),
+                "seq": self._seq,
                 "decisions": list(self.decisions)[-20:],
             }
+
+    def snapshot(self, *, refresh_think: bool = False) -> dict[str, Any]:
+        """Shared operator+overlay payload. Does not notify waiters."""
+        if refresh_think:
+            self.think(notify=False)
+        return self.status()
+
+    def wait_for(self, after: int, timeout: float = 15.0) -> int:
+        """Block until seq > after or timeout. Returns the current seq."""
+        deadline = time.time() + max(0.0, timeout)
+        with self._cond:
+            while self._seq <= after and not self._stop.is_set():
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+                self._cond.wait(remaining)
+            return self._seq
+
+    def _extension_view_unlocked(self, now: float | None = None) -> dict[str, Any]:
+        now = time.time() if now is None else now
+        seen = self._ext_seen
+        sess = self.session.public_view()
+        has_cookies = bool(sess.get("has_cookies"))
+        return {
+            "connected": bool(seen is not None and now - seen <= EXTENSION_STALE_S),
+            "last_seen": seen,
+            "last_quote_source": self._ext_quote_source,
+            "has_cookies": has_cookies,
+            "has_session": bool(has_cookies or sess.get("privy_user_id_set")),
+        }
+
+    def _notify_unlocked(self) -> None:
+        self._seq += 1
+        self._cond.notify_all()
 
     def close(self) -> None:
         self._stop.set()
         self.running = False
+        with self._cond:
+            self._notify_unlocked()
         thread = self._thread
         if thread and thread.is_alive() and thread is not threading.current_thread():
             thread.join(timeout=2.0)
@@ -211,7 +275,7 @@ class ControlRoom:
             try:
                 if self.running:
                     self._maybe_oracle()
-                    sig = self.think()
+                    sig = self.think(notify=True)
                     self._maybe_act(sig)
             except Exception as exc:
                 self.last_error = f"{type(exc).__name__}: {exc}"

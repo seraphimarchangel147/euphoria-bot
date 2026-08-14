@@ -3,7 +3,7 @@
   right: 16px;
   bottom: 16px;
   z-index: 2147483646;
-  width: 260px;
+  width: 280px;
   padding: 10px 12px;
   background: #161a20;
   color: #e8edf5;
@@ -47,6 +47,11 @@
   padding: 4px 8px;
   cursor: pointer;
   font-weight: 600;
+}
+#euphoria-bot-overlay button.active {
+  background: #1c3a2a;
+  border-color: #2f6b4a;
+  color: #3dd68c;
 }
 #euphoria-helper-layer {
   position: absolute;

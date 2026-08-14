@@ -214,6 +214,10 @@ def test_http_start_stop_and_think(tmp_path):
         assert think["lesson"]
         assert think["why"]
         assert "grade" in think
+        assert "extension" in status
+        assert status["extension"]["connected"] is False
+        assert "extBadge" in dash.text
+        assert "tab offline" in dash.text
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -274,6 +278,100 @@ def test_think_payload_includes_mtf_stack_from_injected_ohlc(tmp_path):
     assert set(body["timeframes"]) == set(TF_KEYS)
     assert all(body["timeframes"][k]["source"] == "ohlc" for k in TF_KEYS)
     room.close()
+
+
+def test_quotes_and_session_mark_extension_connected(tmp_path):
+    room = _room(tmp_path)
+    assert room.status()["extension"]["connected"] is False
+    room.ticks.push("ETH", 3000.0, time.time(), source="redstone")
+    assert room.status()["extension"]["connected"] is False
+    n = room.ingest_quotes(
+        [{"symbol": "ETH", "price": 3010.0, "ts": time.time(), "source": "page"}],
+        source="extension",
+    )
+    assert n == 1
+    ext = room.status()["extension"]
+    assert ext["connected"] is True
+    assert ext["last_seen"]
+    assert ext["last_quote_source"] == "page"
+    assert ext["has_cookies"] is False
+    room.ingest_session({
+        "cookies": {"privy-token": "tok", "privy-id-token": "id", "privy-session": "s"},
+    })
+    ext = room.status()["extension"]
+    assert ext["connected"] is True
+    assert ext["has_cookies"] is True
+    assert ext["has_session"] is True
+    room._ext_seen = time.time() - 60
+    assert room.status()["extension"]["connected"] is False
+    room.close()
+
+
+def test_http_mode_and_start_show_in_status_overlay_reads(tmp_path):
+    room = _room(tmp_path)
+    now = time.time()
+    for t in _up_ticks(now):
+        room.ticks.push(t.symbol, t.price, t.ts, source="test")
+    httpd, port = _serve(room)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        httpx.post(f"{base}/quotes", json=[
+            {"symbol": "ETH", "price": 3003.6, "ts": now, "source": "page"},
+        ], timeout=3.0)
+        started = httpx.post(f"{base}/start", timeout=3.0).json()
+        assert started["running"] is True
+        assert started["extension"]["connected"] is True
+        assert started["extension"]["last_quote_source"] == "page"
+        httpx.post(f"{base}/mode", json={"mode": "auto"}, timeout=3.0)
+        status = httpx.get(f"{base}/status", timeout=3.0).json()
+        assert status["running"] is True
+        assert status["mode"] == "auto"
+        assert status["dry_run"] is True
+        assert status["extension"]["connected"] is True
+        think = status["think"] or httpx.get(f"{base}/think", timeout=3.0).json()
+        assert think["candidates"]
+        assert "pick" in think
+        assert set(think["timeframes"]) == {"1m", "5m", "1h", "4h", "D", "M"}
+        assert "grade" in think
+        httpx.post(f"{base}/mode", json={"mode": "manual"}, timeout=3.0)
+        assert httpx.get(f"{base}/status", timeout=3.0).json()["mode"] == "manual"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        room.close()
+
+
+def test_events_long_poll_wakes_on_start(tmp_path):
+    room = _room(tmp_path)
+    now = time.time()
+    for t in _up_ticks(now):
+        room.ticks.push(t.symbol, t.price, t.ts, source="test")
+    httpd, port = _serve(room)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        before = httpx.get(f"{base}/events?after=0&wait=0.2", timeout=3.0).json()
+        assert "extension" in before
+        assert "seq" in before
+        think = before.get("think") or {}
+        if think:
+            assert "candidates" in think
+            assert "timeframes" in think
+            assert "grade" in think
+        seq = before["seq"]
+
+        def later():
+            time.sleep(0.15)
+            httpx.post(f"{base}/start", timeout=3.0)
+
+        threading.Thread(target=later, daemon=True).start()
+        woken = httpx.get(f"{base}/events?after={seq}&wait=2", timeout=4.0).json()
+        assert woken["running"] is True
+        assert woken["seq"] > seq
+        assert woken["mode"] == "manual"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        room.close()
 
 
 def test_make_server_rejects_non_localhost(tmp_path):
