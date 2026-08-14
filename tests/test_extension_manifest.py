@@ -101,7 +101,7 @@ def test_overlay_fallback_and_pink_without_pick():
     assert "function standAsideFromThink" in inject
     aside = inject[inject.index("function standAsideFromThink"):inject.index("function standAsideFromThink") + 420]
     assert "lesson" not in aside
-    assert "Always draw pink" in inject
+    assert "Always pink on nearby" in inject
     assert "grid-hook" in inject
     assert "pointer-events" in inject
     css = (ROOT / "overlay.css").read_text()

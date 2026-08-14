@@ -410,11 +410,11 @@
       layer.id = LAYER_ID;
       layer.setAttribute("aria-hidden", "true");
       layer.style.position = "fixed";
-      layer.style.pointerEvents = "none";
+      layer.style.setProperty("pointer-events", "none");
       layer.style.zIndex = "2147483645";
       layer.style.overflow = "visible";
       tileCanvas = document.createElement("canvas");
-      tileCanvas.style.pointerEvents = "none";
+      tileCanvas.style.setProperty("pointer-events", "none");
       labelEl = document.createElement("div");
       labelEl.id = "euphoria-helper-tile-label";
       tfEl = document.createElement("div");
