@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Euphoria control</title>
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --panel: #161a20;
+      --line: #2a3140;
+      --text: #e8edf5;
+      --muted: #8b95a8;
+      --up: #3dd68c;
+      --down: #ff6b6b;
+      --flat: #8b95a8;
+      --warn: #f5c14a;
+      --accent: #6ea8fe;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; }
+    header {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 14px 18px; border-bottom: 1px solid var(--line);
+    }
+    h1 { font-size: 15px; font-weight: 650; letter-spacing: .04em; margin: 0; text-transform: uppercase; }
+    .badge {
+      font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line);
+    }
+    .badge.dry { color: var(--warn); border-color: #5c4a1c; background: #2a220c; }
+    .badge.live { color: var(--down); border-color: #5c1c1c; background: #2a0c0c; }
+    .badge.on { color: var(--up); border-color: #1c5c3a; background: #0c2a1a; }
+    .badge.off { color: var(--muted); }
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px; }
+    @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+    .card h2 { margin: 0 0 10px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button {
+      background: #222833; color: var(--text); border: 1px solid var(--line);
+      border-radius: 7px; padding: 7px 12px; cursor: pointer; font-weight: 600;
+    }
+    button:hover { border-color: #4a5568; }
+    button.active { background: #1c3a2a; border-color: #2f6b4a; color: var(--up); }
+    button.danger.active { background: #3a1c1c; border-color: #6b2f2f; color: var(--down); }
+    .ticks { display: flex; gap: 18px; font-variant-numeric: tabular-nums; }
+    .ticks .sym { color: var(--muted); font-size: 12px; }
+    .ticks .px { font-size: 22px; font-weight: 650; }
+    .ticks .src { color: var(--muted); font-size: 11px; }
+    .think-bias { font-size: 28px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
+    .think-bias.up { color: var(--up); }
+    .think-bias.down { color: var(--down); }
+    .think-bias.flat { color: var(--flat); }
+    .reason { margin: 8px 0; color: var(--text); }
+    .bar { height: 6px; background: #222833; border-radius: 99px; overflow: hidden; margin: 8px 0 4px; }
+    .bar > span { display: block; height: 100%; background: var(--accent); }
+    .meta { color: var(--muted); font-size: 12px; }
+    .err { color: var(--down); font-size: 12px; min-height: 1.2em; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; }
+    .full { grid-column: 1 / -1; }
+    .tf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .tf-chips span {
+      font-size: 11px; font-weight: 700; letter-spacing: .04em;
+      padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .tf-chips span.up { color: var(--up); border-color: #1c5c3a; }
+    .tf-chips span.down { color: var(--down); border-color: #5c1c1c; }
+    .tf-chips span.flat { color: var(--flat); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Euphoria control</h1>
+    <span id="dry" class="badge dry">dry-run</span>
+    <span id="run" class="badge off">stopped</span>
+    <span id="modeBadge" class="badge off">manual</span>
+    <span id="extBadge" class="badge off">tab offline</span>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Operator</h2>
+      <div class="row">
+        <button id="btnStart" type="button">Start</button>
+        <button id="btnStop" type="button">Stop</button>
+        <button id="btnManual" type="button">Manual</button>
+        <button id="btnAuto" type="button">Auto</button>
+      </div>
+      <p class="meta" style="margin:10px 0 0">
+        Live indicator for a logged-in tab. Manual never submits — you tap.
+        After each 5s window it grades whether price tagged the named square.
+        Auto still will not live-submit unless <code>EUPHORIA_DRY_RUN=0</code>
+        and botSignature / deviceFingerprint / approvalPermit are present.
+      </p>
+      <p id="err" class="err"></p>
+    </section>
+    <section class="card">
+      <h2>Ticks</h2>
+      <div class="ticks">
+        <div>
+          <div class="sym">ETH</div>
+          <div id="ethPx" class="px">—</div>
+          <div id="ethSrc" class="src"></div>
+        </div>
+        <div>
+          <div class="sym">BTC</div>
+          <div id="btcPx" class="px">—</div>
+          <div id="btcSrc" class="src"></div>
+        </div>
+      </div>
+      <p id="session" class="meta" style="margin:12px 0 0"></p>
+    </section>
+    <section class="card full">
+      <h2>Live indicator</h2>
+      <div id="bias" class="think-bias flat">flat</div>
+      <div id="hint" class="reason">waiting on ticks</div>
+      <div class="bar"><span id="confBar" style="width:0%"></span></div>
+      <div id="conf" class="meta">confidence 0.00</div>
+      <p id="reason" class="meta">—</p>
+      <div id="tfLine" class="meta">1m· 5m· 1h· 4h· D· M·</div>
+      <div id="tfChips" class="tf-chips"></div>
+      <div id="setup" class="meta">setup none</div>
+      <div id="suggested" class="meta">no trade</div>
+      <div id="grade" class="meta">last window —</div>
+    </section>
+    <section class="card full">
+      <h2>Recent decisions</h2>
+      <table>
+        <thead><tr><th>time</th><th>action</th><th>bias</th><th>detail</th></tr></thead>
+        <tbody id="log"></tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    function fmtSrc(q) {
+      if (!q) return "";
+      const src = q.source || "";
+      if (src === "page" || src === "extension" || src === "dom" || src === "ws") return "from tab";
+      return src;
+    }
+    function fmtPx(q) {
+      if (!q || q.price == null) return "—";
+      return Number(q.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function fmtTime(ts) {
+      if (!ts) return "";
+      return new Date(ts * 1000).toLocaleTimeString();
+    }
+    function fmtSuggested(sug, hint, looking) {
+      if (!sug || sug === "no trade") return "no trade";
+      const line = hint || sug.hint || sug.label || sug.cell || "nearby square";
+      const cell = (sug.cell_x != null && sug.cell_y != null)
+        ? " · cell " + sug.cell_x + "," + sug.cell_y
+        : "";
+      const look = Array.isArray(looking) && looking.length
+        ? " · looking at " + looking.map((t) => (t.side || "") + (t.distance || "")).join(", ")
+        : "";
+      return line + cell + look;
+    }
+    async function post(path, body) {
+      const r = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      });
+      return r.json();
+    }
+    function paint(status, think) {
+      const dry = !!status.dry_run;
+      $("dry").textContent = dry ? "dry-run" : "live";
+      $("dry").className = "badge " + (dry ? "dry" : "live");
+      $("run").textContent = status.running ? "running" : "stopped";
+      $("run").className = "badge " + (status.running ? "on" : "off");
+      $("modeBadge").textContent = status.mode || "manual";
+      $("btnStart").classList.toggle("active", !!status.running);
+      $("btnStop").classList.toggle("danger", true);
+      $("btnStop").classList.toggle("active", !status.running);
+      $("btnManual").classList.toggle("active", status.mode === "manual");
+      $("btnAuto").classList.toggle("active", status.mode === "auto");
+      const q = status.quotes || {};
+      $("ethPx").textContent = fmtPx(q.ETH);
+      $("btcPx").textContent = fmtPx(q.BTC);
+      $("ethSrc").textContent = fmtSrc(q.ETH);
+      $("btcSrc").textContent = fmtSrc(q.BTC);
+      const ext = status.extension || {};
+      let extLabel = "tab offline";
+      if (ext.connected) extLabel = "tab connected";
+      else if (ext.session_only) extLabel = "session only / redstone";
+      $("extBadge").textContent = extLabel;
+      $("extBadge").className = "badge " + (ext.connected ? "on" : "off");
+      $("err").textContent = status.last_error || "";
+      const s = status.session || {};
+      $("session").textContent =
+        "session: " + (s.cookie_names || []).join(", ") +
+        (s.cookie_names && s.cookie_names.length ? "" : "no cookies") +
+        " · artefacts " + ((s.artefact_names || []).join(", ") || "none") +
+        (s.privy_user_id_set ? " · privyUserId set" : "");
+      const t = think || status.think || {};
+      const bias = t.bias || "flat";
+      $("bias").textContent = bias;
+      $("bias").className = "think-bias " + bias;
+      const conf = Number(t.confidence || 0);
+      $("conf").textContent = "confidence " + conf.toFixed(2);
+      $("confBar").style.width = Math.round(conf * 100) + "%";
+      const standAside = t.stand_aside != null ? !!t.stand_aside : !t.pick;
+      const why = t.sit_reason || t.why || t.hint || t.reason || "waiting on ticks";
+      const setup = (t.setup && t.setup !== "none") ? t.setup : "none";
+      const action = t.action || (standAside ? "sit" : "tap");
+      $("hint").textContent = standAside ? ("no trade — " + why) : why;
+      $("setup").textContent = "setup " + setup + " · " + action +
+        (t.pink_age_s != null ? " · pink " + Number(t.pink_age_s).toFixed(1) + "s" : "") +
+        (t.range_shrinking ? " · range shrinking" : "");
+      $("reason").textContent = (t.looking ? "looking at " + t.looking : "") +
+        (t.reason ? (t.looking ? " · " : "") + t.reason : "");
+      const frames = t.timeframes || {};
+      const keys = ["1m", "5m", "1h", "4h", "D", "M"];
+      $("tfLine").textContent =
+        (t.tf_lean ? "higher TF " + t.tf_lean : "higher TF unknown") +
+        (t.alignment && t.alignment !== "unknown" ? " · " + t.alignment : "") +
+        (t.tf_line ? " · " + t.tf_line : "");
+      $("tfChips").innerHTML = keys.map((k) => {
+        const f = frames[k] || {};
+        const lean = f.lean || "unknown";
+        const pct = (f.change_pct != null) ? " " + Number(f.change_pct).toFixed(2) + "%" : "";
+        return "<span class=\"" + lean + "\">" + k + " " + lean + pct + "</span>";
+      }).join("");
+      $("suggested").textContent = fmtSuggested(t.suggested || t.pick, t.hint, t.candidates || t.looking_at);
+      $("grade").textContent = (t.grade && t.grade.line) || "last window —";
+      const rows = (status.decisions || []).slice().reverse();
+      $("log").innerHTML = rows.map((d) =>
+        "<tr><td>" + fmtTime(d.ts) + "</td><td>" + (d.action || "") +
+        "</td><td>" + (d.bias || "") + "</td><td>" + (d.detail || d.reason || "") + "</td></tr>"
+      ).join("");
+    }
+    function applySnapshot(status) {
+      paint(status, status.think || {});
+    }
+    async function refresh() {
+      try {
+        const status = await fetch("/status").then((r) => r.json());
+        applySnapshot(status);
+      } catch (e) {
+        $("err").textContent = "control room unreachable";
+      }
+    }
+    function connectEvents() {
+      try {
+        const es = new EventSource("/events");
+        es.addEventListener("state", (ev) => {
+          try { applySnapshot(JSON.parse(ev.data)); } catch (e) { /* ignore */ }
+        });
+        es.onerror = () => { /* EventSource retries; poll is the backup */ };
+      } catch (e) {
+        /* older browsers */
+      }
+    }
+    $("btnStart").onclick = () => post("/start").then(applySnapshot);
+    $("btnStop").onclick = () => post("/stop").then(applySnapshot);
+    $("btnManual").onclick = () => post("/mode", { mode: "manual" }).then(applySnapshot);
+    $("btnAuto").onclick = () => post("/mode", { mode: "auto" }).then(applySnapshot);
+    refresh();
+    connectEvents();
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

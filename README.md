@@ -8,8 +8,12 @@ tap-trading platform on MegaETH (chain 4326).
 Euphoria is **server-mediated**. Trades do not go direct-to-contract:
 
 ```
-oracle price -> risk check -> EIP-712 sign -> tRPC API -> server matches -> on-chain
+ticks (extension or Redstone) -> think signal -> risk -> EIP-712 sign -> tRPC API
 ```
+
+The Python process still does **not** speak the authenticated ~10Hz Euphoria
+WebSocket. Redstone HTTP is the fallback. Live page ticks arrive only if you
+load the Chrome extension on a logged-in tab.
 
 See [docs/REVERSE_ENGINEERING.md](docs/REVERSE_ENGINEERING.md) for the decoded
 protocol and [docs/AUTH.md](docs/AUTH.md) for authentication.
@@ -18,10 +22,13 @@ protocol and [docs/AUTH.md](docs/AUTH.md) for authentication.
 
 | Component | Status | Notes |
 |---|---|---|
-| Price oracle (Redstone) | Working | live ETH/BTC, staleness-guarded |
-| EIP-712 signing | Working | sign + self-recover verified, 43 tests |
+| Control room | Working | `python -m src.ui` — localhost dashboard + start/stop/think |
+| Think signal | Working | nearby 5s tap + 1m/5m/1h/4h/D/M bias (`src/analytics/signal.py`) |
+| Chrome extension | Working | helper overlay in a logged-in tab: prices, session, /trade |
+| Price oracle (Redstone) | Working | fallback when extension ticks are stale |
+| EIP-712 signing | Working | sign + self-recover verified |
 | Risk engine | Working | size / balance / open-count / daily-loss breaker |
-| Privy auth | Working | self-renewing via refresh token (docs/AUTH.md) |
+| Privy auth | Working | refresh token (existing) + cookies via extension/env |
 | API client | Working | tRPC query/mutate, retries, typed errors |
 | Trade assembly | Working | verified end-to-end in dry run |
 | Live submission | Blocked | needs botSignature (Turnstile), deviceFingerprint, approvalPermit |
@@ -41,9 +48,11 @@ geo-block and Privy auth, and exits non-zero if the bot is not ready.
 ## Usage
 
 ```bash
+python3 -m src.ui                      # operator control room (127.0.0.1:8765)
+python3 -m src.control                 # same server
 python3 -m src.monitor.price_monitor   # price alerts (optional Discord webhook)
-python3 -m src.trader.auto_trader      # trade loop (DRY_RUN=1 by default)
-python3 -m pytest                      # 43 tests
+python3 -m src.trader.auto_trader      # one-shot trade loop (DRY_RUN=1 by default)
+python3 -m pytest
 ```
 
 ```python
@@ -51,6 +60,58 @@ from src.trader.auto_trader import EuphoriaTrader
 trader = EuphoriaTrader()          # DRY_RUN unless EUPHORIA_DRY_RUN=0
 print(trader.trade("ETH", 2.5))    # live price -> risk -> sign -> dry-run payload
 ```
+
+## Control room
+
+```bash
+python3 -m src.ui
+```
+
+Binds **127.0.0.1 only** (default port `8765`, override with
+`EUPHORIA_CONTROL_PORT`). Open http://127.0.0.1:8765/
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/status` | running/stopped, mode, dry_run, last quotes, last decision, last error, extension link |
+| GET | `/think` | current signal: nearby 5s pick/candidates, higher-TF stack (1m/5m/1h/4h/D/M), reason |
+| GET | `/events` | SSE snapshot (or `?after=&wait=` long-poll) — same payload the overlay paints |
+| POST | `/start` `/stop` | operator run switch |
+| POST | `/mode` | `{"mode":"manual"}` or `{"mode":"auto"}` |
+| POST | `/session` | extension posts `{cookies, privyUserId, quotes?}` |
+
+**Manual** only publishes think / overlay. It never submits.
+
+**Auto** still will not live-submit unless `EUPHORIA_DRY_RUN=0` **and**
+`botSignature`, `deviceFingerprint`, and `approvalPermit` are present. Dry-run
+stays the default.
+
+The dashboard and the `/trade` overlay are one control room. Start, stop, and
+mode on either side hit the same `ControlRoom`. `/events` pushes the shared
+snapshot so a click on one surface shows on the other within a beat. The
+dashboard shows whether the trade-tab helper is connected and whether ticks
+are **from tab** (not only Redstone). Manual never submits — you tap.
+
+Think names a **setup** when it can (stall, compression, sweep, late pink)
+or else the **nearest square** the 5s tape is likely to *touch once*
+(official rule: price only has to enter the zone). Separately it reads a
+higher-timeframe stack — 1 minute, 5 minute, 1 hour, 4 hour, daily, monthly —
+from public OHLC when available, or from accumulated ticks for the short
+windows. Higher TFs are bias only: a nearby tap can be with-trend or fading.
+Choppy or quiet tape → `no trade`. Far lottery cells are never named.
+
+## Chrome extension
+
+Load unpacked from [`extension/`](extension/README.md):
+
+1. Stay in a normal Chrome profile already logged into Euphoria.
+2. Start the local helper (`python -m src.ui`).
+3. `chrome://extensions` → Developer mode → Load unpacked → `extension/`.
+4. Pin it. Open `/trade`.
+
+The overlay sits on the live `/trade` canvas: pink on nearby candidate tiles,
+blue on the selected pick, plus looking-at, the 1m/5m/1h/4h/D/M lean, a short
+why, and last-window hit/miss. A small card still shows start/stop. Manual
+mode is an indicator — you tap. Details in [docs/AUTH.md](docs/AUTH.md).
 
 ## Safety
 
