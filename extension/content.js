@@ -169,9 +169,12 @@ function paintSnapshot(st) {
   document.getElementById("ebo-conf").textContent =
     "confidence " + Number(th.confidence || 0).toFixed(2);
   const sug = th.suggested;
-  const standAside = !th.pick || sug === "no trade";
-  const hint = th.why || th.hint || (sug && sug.hint) || th.reason || "waiting on ticks";
-  document.getElementById("ebo-hint").textContent = standAside ? ("no trade — " + hint) : hint;
+  const standAside = th.action === "sit" || !th.pick || sug === "no trade";
+  const hint = th.sit_reason || th.why || th.hint || (sug && sug.hint) || th.reason || "waiting on ticks";
+  const setup = th.setup && th.setup !== "none" ? th.setup + " · " + (th.action || (standAside ? "sit" : "tap")) : "";
+  document.getElementById("ebo-hint").textContent = standAside
+    ? ((setup ? setup + " — " : "no trade — ") + hint)
+    : ((setup ? setup + " — " : "") + hint);
   const tf = document.getElementById("ebo-tf");
   if (tf) {
     const line = th.tf_line || "";

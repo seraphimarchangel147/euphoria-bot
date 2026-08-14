@@ -214,6 +214,14 @@ def test_http_start_stop_and_think(tmp_path):
         assert think["lesson"]
         assert think["why"]
         assert "grade" in think
+        assert think["setup"] in ("stall", "compression", "sweep", "late_pink", "none")
+        assert think["action"] in ("sit", "tap")
+        assert "sit_reason" in think
+        assert "pink_age_s" in think
+        assert "range_shrinking" in think
+        assert "wick_squares" in think
+        assert "compression_box" in think
+        assert "swing_1m" in think
         assert "extension" in status
         assert status["extension"]["connected"] is False
         assert "extBadge" in dash.text

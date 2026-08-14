@@ -256,3 +256,10 @@ def test_overlay_payload_shape_candidates_pick_and_tf_stack():
     assert d["lesson"] == "with-trend"
     assert "with-trend" in d["why"]
     assert d["looking"] == "nearest square above"
+    assert d["setup"] in ("stall", "compression", "sweep", "late_pink", "none")
+    assert d["action"] in ("sit", "tap")
+    assert "pink_age_s" in d
+    assert "range_shrinking" in d
+    assert "wick_squares" in d
+    assert "compression_box" in d
+    assert "swing_1m" in d

@@ -91,7 +91,8 @@ snapshot so a click on one surface shows on the other within a beat. The
 dashboard shows whether the trade-tab helper is connected and whether ticks
 are **from tab** (not only Redstone). Manual never submits — you tap.
 
-Think names the **nearest square** the 5s tape is likely to *touch once*
+Think names a **setup** when it can (stall, compression, sweep, late pink)
+or else the **nearest square** the 5s tape is likely to *touch once*
 (official rule: price only has to enter the zone). Separately it reads a
 higher-timeframe stack — 1 minute, 5 minute, 1 hour, 4 hour, daily, monthly —
 from public OHLC when available, or from accumulated ticks for the short

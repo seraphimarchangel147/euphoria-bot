@@ -45,6 +45,8 @@ def test_extension_docs_the_three_jobs():
     assert "euphoria-helper-tf-strip" in inject
     assert "euphoria-helper-grade" in inject
     assert "think.why" in inject or "think.grade" in inject
+    assert "setup" in inject
+    assert "sit" in inject
     css = (ROOT / "overlay.css").read_text()
     assert "euphoria-helper-tf-strip" in css
     assert "euphoria-helper-grade" in css

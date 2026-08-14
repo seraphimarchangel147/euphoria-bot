@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from config import settings
 from src.analytics.lesson import GradeBook
+from src.analytics.setups import SetupMemory
 from src.analytics.signal import Signal, TickBuffer, compute_signal
 from src.auth.session import SessionState, apply_payload, load_session, persist_session
 
@@ -73,6 +74,7 @@ class ControlRoom:
         self._ohlc_at = 0.0
         self._last_fingerprint: tuple | None = None
         self.scoreboard = GradeBook()
+        self.setups = SetupMemory()
         self._seq = 0
         self._ext_seen: float | None = None
         self._ext_quote_source: str | None = None
@@ -173,7 +175,9 @@ class ControlRoom:
         ohlc = self._refresh_ohlc()
         now = time.time() if now is None else now
         with self._lock:
-            sig = compute_signal(self.ticks, now=now, size=self.size, grid=self.grid, ohlc=ohlc)
+            sig = compute_signal(
+                self.ticks, now=now, size=self.size, grid=self.grid, ohlc=ohlc, memory=self.setups
+            )
             self.last_signal = sig
             last = self.ticks.latest("ETH")
             self.scoreboard.update(

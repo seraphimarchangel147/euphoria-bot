@@ -530,12 +530,15 @@
     const lookingAt = think.looking || (selected && selected.hint) || "nearby above and below";
     const why = think.why || (think.hint && think.hint !== "no trade" ? think.hint : "") ||
       (think.reason || "").split("→").pop().trim();
-    const standAside = !selected || think.suggested === "no trade" || think.lesson === "chop" ||
+    const setupName = think.setup && think.setup !== "none" ? think.setup : "";
+    const action = think.action || (think.suggested === "no trade" || !selected ? "sit" : "tap");
+    const standAside = action === "sit" || !selected || think.suggested === "no trade" || think.lesson === "chop" ||
       think.lesson === "quiet" || think.lesson === "waiting" || think.lesson === "fade" ||
-      think.lesson === "faded" || think.lesson === "weak";
+      think.lesson === "faded" || think.lesson === "weak" || think.lesson === "late_pink";
+    const setupLine = setupName ? (setupName + " · " + action) : "";
     const liveLine = standAside
-      ? ("no trade — " + (why || "standing aside"))
-      : (why || lookingAt);
+      ? ((setupLine ? setupLine + " — " : "no trade — ") + (think.sit_reason || why || "standing aside"))
+      : ((setupLine ? setupLine + " — " : "") + (why || lookingAt));
     const anchor = pickBox || (looking[0] && targetBox(looking[0]));
     if (tfEl && line) {
       tfEl.textContent = (think.tf_lean ? think.tf_lean + " · " : "") + line;
@@ -549,7 +552,9 @@
       }
     }
     if (labelEl) {
-      labelEl.textContent = standAside ? "no trade" : lookingAt;
+      labelEl.textContent = standAside
+        ? (setupLine || "no trade")
+        : (setupLine ? setupLine + " · " + lookingAt : lookingAt);
       labelEl.style.display = "block";
       labelEl.classList.toggle("aside", !!standAside);
       if (anchor) {

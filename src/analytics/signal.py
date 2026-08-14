@@ -17,6 +17,16 @@ from collections import deque
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable, Sequence
 
+from src.analytics.setups import (
+    SetupMemory,
+    choose_setup,
+    detect_compression,
+    detect_swing_1m,
+    late_pink_sit,
+    pair_lean,
+    pink_metrics,
+    window_id_for,
+)
 from src.analytics.timeframes import (
     TF_KEYS,
     TimeframeStack,
@@ -87,6 +97,14 @@ class Signal:
     lesson: str = "waiting"
     why: str = "waiting on ticks"
     looking: str = "nearby above and below"
+    setup: str = "none"
+    sit_reason: str = ""
+    wick_squares: float = 0.0
+    compression_box: dict | None = None
+    swing_1m: dict | None = None
+    pink_age_s: float = 0.0
+    range_shrinking: bool = False
+    action: str = "sit"
 
     def to_dict(self) -> dict:
         suggested: dict | str
@@ -126,6 +144,14 @@ class Signal:
             "lesson": self.lesson,
             "why": self.why,
             "looking": self.looking,
+            "setup": self.setup,
+            "sit_reason": self.sit_reason,
+            "wick_squares": self.wick_squares,
+            "compression_box": self.compression_box,
+            "swing_1m": self.swing_1m,
+            "pink_age_s": self.pink_age_s,
+            "range_shrinking": self.range_shrinking,
+            "action": self.action,
             "asset": self.asset,
             "momentum_pct": self.momentum_pct,
         }
@@ -288,6 +314,54 @@ def _page_dense(ticks: Sequence[Tick]) -> bool:
     return any(t.source in ("page", "extension", "ws") for t in ticks) or len(ticks) >= DENSE_TICKS
 
 
+def _setup_fields(
+    *,
+    setup: str = "none",
+    sit_reason: str = "",
+    wick_squares: float = 0.0,
+    compression_box: dict | None = None,
+    swing_1m: dict | None = None,
+    pink_age_s: float = 0.0,
+    range_shrinking: bool = False,
+    action: str = "sit",
+) -> dict[str, Any]:
+    return {
+        "setup": setup,
+        "sit_reason": sit_reason,
+        "wick_squares": round(float(wick_squares), 3),
+        "compression_box": compression_box,
+        "swing_1m": swing_1m,
+        "pink_age_s": round(float(pink_age_s), 3),
+        "range_shrinking": bool(range_shrinking),
+        "action": action,
+    }
+
+
+def _pick_nearby(
+    side: str,
+    *,
+    size: float,
+    height: float,
+    grid: dict[str, Any] | None,
+    looking: tuple,
+) -> Suggestion:
+    cell, label, hint = _square_copy(side, 1)
+    cell_x, cell_y = _map_cell(side, 1, grid)
+    return Suggestion(
+        asset="ETH",
+        side=side,
+        size=size,
+        cell=cell,
+        distance=1,
+        label=label,
+        hint=hint,
+        cell_x=cell_x,
+        cell_y=cell_y,
+        cell_height=round(height, 8),
+        looking_at=looking,
+    )
+
+
 def compute_signal(
     ticks: Sequence[Tick] | "TickBuffer",
     *,
@@ -297,6 +371,7 @@ def compute_signal(
     cell_height: float | None = None,
     grid: dict[str, Any] | None = None,
     ohlc: dict[str, Any] | None = None,
+    memory: SetupMemory | None = None,
 ) -> Signal:
     """Name the nearby square most likely to get touched in the next ~5s. No I/O."""
     now = time.time() if now is None else now
@@ -321,6 +396,86 @@ def compute_signal(
     flip_rate = _flip_rate(eth)
     height = _cell_height(last, cell_height, grid)
     reachable = net / height if height > 0 else 0.0
+    wid = window_id_for(now, grid)
+    htf_now = stack.lean if stack.lean in ("up", "down") else pair_lean(stack, "1h", "4h")
+    pink = pink_metrics(
+        eth,
+        height,
+        now=now,
+        memory=memory,
+        window_id=wid,
+        htf=htf_now,
+        has_candidates=True,
+    )
+    box_raw = detect_compression(seq, height, now=now)
+    box = {"low": box_raw["low"], "high": box_raw["high"]} if box_raw else None
+    swing = detect_swing_1m(seq, now=now, ohlc=ohlc)
+    extra_fields = _setup_fields(
+        wick_squares=0.0,
+        compression_box=box,
+        swing_1m=swing,
+        pink_age_s=pink.age_s,
+        range_shrinking=pink.shrinking,
+        action="sit",
+    )
+
+    named = choose_setup(
+        ticks_5s=eth,
+        ticks_all=seq,
+        height=height,
+        stack=stack,
+        now=now,
+        ohlc=ohlc,
+    )
+    if named:
+        extra_fields.update(
+            _setup_fields(
+                setup=named.name,
+                sit_reason=named.reason if named.sit else "",
+                wick_squares=named.wick_squares,
+                compression_box=named.box or box,
+                swing_1m=named.swing or swing,
+                pink_age_s=pink.age_s,
+                range_shrinking=pink.shrinking,
+                action="sit" if named.sit else "tap",
+            )
+        )
+        if named.sit:
+            return Signal(
+                bias="flat",
+                confidence=0.35,
+                reason=named.reason,
+                suggested="no trade",
+                hint="no trade",
+                looking_at=looking,
+                momentum_pct=round(mom_pct, 4),
+                tf_stack=stack,
+                alignment=tf_alignment(named.side or "flat", stack.lean) if named.side else "unknown",
+                lesson=named.name,
+                why=named.reason,
+                looking="nearby above and below",
+                **extra_fields,
+            )
+        suggested = _pick_nearby(named.side or "up", size=size, height=height, grid=grid, looking=looking)
+        if memory is not None:
+            memory.mark_blue()
+        extra_fields["action"] = "tap"
+        extra_fields["sit_reason"] = ""
+        return Signal(
+            bias=named.side or "up",
+            confidence=0.62,
+            reason=named.reason + f" → {suggested.hint}",
+            suggested=suggested,
+            hint=suggested.hint,
+            looking_at=looking,
+            momentum_pct=round(mom_pct, 4),
+            tf_stack=stack,
+            alignment=tf_alignment(named.side or "up", stack.lean),
+            lesson=named.name,
+            why=named.reason,
+            looking=suggested.label,
+            **extra_fields,
+        )
 
     btc = _in_window(seq, "BTC", now, window_s)
     btc_mom = _momentum(btc) if len(btc) >= 2 else None
@@ -344,6 +499,7 @@ def compute_signal(
             lesson="chop",
             why="chop — tape is whipping, standing aside",
             looking="nearby above and below",
+            **extra_fields,
         )
 
     if abs(mom) < FLAT_THRESHOLD or reachable < REACH_NEAREST:
@@ -360,6 +516,7 @@ def compute_signal(
             lesson="quiet",
             why="quiet — not enough drift to tag a nearby square",
             looking="nearby above and below",
+            **extra_fields,
         )
 
     bias = "up" if mom > 0 else "down"
@@ -384,6 +541,7 @@ def compute_signal(
                     lesson="faded",
                     why="recent tape faded — standing aside",
                     looking="nearby above and below",
+                    **extra_fields,
                 )
 
     # Touch-once: the nearest square on the drift side is the most likely hit.
@@ -434,6 +592,37 @@ def compute_signal(
             lesson=lesson,
             why=teach,
             looking="nearby above and below",
+            **extra_fields,
+        )
+
+    late = late_pink_sit(pink, would_pick=True)
+    if late:
+        extra_fields.update(
+            _setup_fields(
+                setup="late_pink",
+                sit_reason=late.reason,
+                wick_squares=extra_fields["wick_squares"],
+                compression_box=box,
+                swing_1m=swing,
+                pink_age_s=pink.age_s,
+                range_shrinking=pink.shrinking,
+                action="sit",
+            )
+        )
+        return Signal(
+            bias=bias,
+            confidence=confidence,
+            reason=late.reason,
+            suggested="no trade",
+            hint="no trade",
+            looking_at=looking,
+            momentum_pct=round(mom_pct, 4),
+            tf_stack=stack,
+            alignment=how,
+            lesson="late_pink",
+            why=late.reason,
+            looking="nearby above and below",
+            **extra_fields,
         )
 
     suggested = Suggestion(
@@ -456,6 +645,11 @@ def compute_signal(
         lesson, teach = "fade", "fade — 5s tape is against the higher-TF lean, still the nearby square"
     else:
         lesson, teach = "mixed", "nearby tap — higher TFs are mixed"
+    extra_fields["action"] = "tap"
+    extra_fields["setup"] = "none"
+    extra_fields["sit_reason"] = ""
+    if memory is not None:
+        memory.mark_blue()
     return Signal(
         bias=bias,
         confidence=confidence,
@@ -469,6 +663,7 @@ def compute_signal(
         lesson=lesson,
         why=teach,
         looking=label,
+        **extra_fields,
     )
 
 
