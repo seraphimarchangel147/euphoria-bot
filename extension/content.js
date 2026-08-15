@@ -10,14 +10,21 @@ let lastGridHook = "no canvas";
 let lastStatus = null;
 let lastVisiblePrice = null;
 let lastVisiblePriceAt = 0;
-const CONTENT_BUILD = "0.2.1-dom-price";
+let lastGridSnapshot = null;
+const CONTENT_BUILD = "0.3.0-grid-context";
 
 function injectPageHook() {
-  const src = chrome.runtime.getURL("inject.js");
-  const el = document.createElement("script");
-  el.src = src;
-  el.onload = () => el.remove();
-  (document.head || document.documentElement).appendChild(el);
+  const parent = document.head || document.documentElement;
+  const helper = document.createElement("script");
+  helper.src = chrome.runtime.getURL("grid-context.js");
+  helper.onload = () => {
+    helper.remove();
+    const hook = document.createElement("script");
+    hook.src = chrome.runtime.getURL("inject.js");
+    hook.onload = () => hook.remove();
+    parent.appendChild(hook);
+  };
+  parent.appendChild(helper);
 }
 
 function findPrivyUserId() {
@@ -104,6 +111,7 @@ window.addEventListener("message", (ev) => {
     viaWorker({ type: "artefacts", artefacts: data.payload });
   }
   if (data.type === "grid" && data.payload) {
+    lastGridSnapshot = data.payload;
     viaWorker({ type: "session", grid: data.payload });
   }
   if (data.type === "grid-hook" && data.payload) {
@@ -297,7 +305,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const text = (document.body && document.body.innerText || "").slice(0, 20000);
     const priceEls = Array.from(document.querySelectorAll('[class*="price" i], [data-price]')).slice(0, 20)
       .map((el) => ({ cls: el.className && String(el.className).slice(0, 60), text: (el.textContent || "").trim().slice(0, 80) }));
-    sendResponse({ url: location.href, title: document.title, ts: new Date().toISOString(), contentBuild: CONTENT_BUILD, text, priceEls });
+    sendResponse({ url: location.href, title: document.title, ts: new Date().toISOString(), contentBuild: CONTENT_BUILD, grid: lastGridSnapshot, text, priceEls });
   } catch (e) {
     sendResponse({ error: String(e && e.message || e) });
   }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Euphoria helper",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Helper overlay for a logged-in Euphoria tab: page prices, session cookies, and what the local control room is thinking.",
   "permissions": [
     "alarms",
@@ -37,7 +37,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "inject.js"
+        "inject.js",
+        "grid-context.js"
       ],
       "matches": [
         "https://euphoria.finance/*",

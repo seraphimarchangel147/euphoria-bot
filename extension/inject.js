@@ -22,6 +22,7 @@
   let lastHookEmit = 0;
   let lastChartQuoteAt = 0;
   let lastChartQuotePrice = null;
+  let pageHistory = [];
   let tfEl = null;
   let reasonEl = null;
   let gradeEl = null;
@@ -102,6 +103,12 @@
     if (eth) {
       lastPrice = eth.price;
       lastSymbol = eth.symbol || lastSymbol;
+      if (eth.symbol === "ETH") {
+        const ts = Number(eth.ts) > 1e12 ? Number(eth.ts) : Number(eth.ts) * 1000;
+        pageHistory.push({ ts: Number.isFinite(ts) ? ts : Date.now(), price: eth.price });
+        const cutoff = Date.now() - 120000;
+        pageHistory = pageHistory.filter((item) => item.ts >= cutoff).slice(-500);
+      }
     }
   }
 
@@ -714,7 +721,7 @@
       }
     }
 
-    const meta = {
+    const baseMeta = {
       gridX: Math.floor(snap.now / snap.squareDuration),
       gridY: Math.floor(price / snap.dpl),
       price,
@@ -724,6 +731,18 @@
       now_ms: snap.now,
       cell_height: snap.dpl,
     };
+    const gridBuilder = window.__euphoriaGridContext && window.__euphoriaGridContext.buildGridContext;
+    const context = typeof gridBuilder === "function"
+      ? gridBuilder({
+          chart,
+          nowMs: snap.now,
+          price,
+          squareDuration: snap.squareDuration,
+          dollarsPerLine: snap.dpl,
+          history: pageHistory,
+        })
+      : { authoritative: false, reason: "grid context helper unavailable", cells: [] };
+    const meta = { ...baseMeta, ...context };
     const key = `${meta.gridX}:${meta.gridY}:${meta.dollars_per_line}`;
     const now = Date.now();
     if (key !== lastGridKey || now - lastGridEmit > 1000) {
