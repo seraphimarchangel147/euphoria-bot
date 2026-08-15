@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Iterable, Sequence
 
 from src.analytics.setups import (
@@ -77,6 +77,9 @@ class Suggestion:
     cell_y: int | None = None
     cell_height: float = 0.0
     looking_at: tuple = ()
+    multiplier: float | None = None
+    break_even_probability: float | None = None
+    quoted_grid_ref_time: float | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -105,6 +108,7 @@ class Signal:
     pink_age_s: float = 0.0
     range_shrinking: bool = False
     action: str = "sit"
+    grid_context: dict | None = None
 
     def to_dict(self) -> dict:
         suggested: dict | str
@@ -120,6 +124,9 @@ class Signal:
                 "cell_x": self.suggested.cell_x,
                 "cell_y": self.suggested.cell_y,
                 "role": "sel",
+                "multiplier": self.suggested.multiplier,
+                "break_even_probability": self.suggested.break_even_probability,
+                "quoted_grid_ref_time": self.suggested.quoted_grid_ref_time,
             }
         else:
             suggested = self.suggested
@@ -154,6 +161,12 @@ class Signal:
             "action": self.action,
             "asset": self.asset,
             "momentum_pct": self.momentum_pct,
+            "grid_context": self.grid_context or {
+                "authoritative": False,
+                "reason": "quote grid unavailable",
+                "cell_count": 0,
+                "history": {"sample_count": 0},
+            },
         }
 
 
@@ -284,7 +297,81 @@ def _map_cell(side: str, distance: int, grid: dict[str, Any] | None) -> tuple[in
     return cx, cy
 
 
+def _quoted_cells(grid: dict[str, Any] | None) -> tuple[dict[str, Any], ...]:
+    if not grid or grid.get("authoritative") is not True or not isinstance(grid.get("cells"), list):
+        return ()
+    out = []
+    for raw in grid["cells"][:64]:
+        if not isinstance(raw, dict):
+            continue
+        side = raw.get("side")
+        try:
+            multiplier = float(raw.get("multiplier"))
+            forward = int(raw.get("forward"))
+            distance = int(raw.get("distance"))
+            cell_x = int(raw.get("cell_x"))
+            cell_y = int(raw.get("cell_y"))
+        except (TypeError, ValueError):
+            continue
+        if side not in ("up", "down") or multiplier <= 0 or forward not in (1, 2, 3):
+            continue
+        if distance not in (1, 2):
+            continue
+        try:
+            break_even = float(raw.get("break_even_probability"))
+        except (TypeError, ValueError):
+            break_even = 1.0 / multiplier
+        out.append({
+            "side": side,
+            "distance": distance,
+            "cell_x": cell_x,
+            "cell_y": cell_y,
+            "forward": forward,
+            "forward_s": float(raw.get("forward_s") or forward * 5),
+            "multiplier": multiplier,
+            "break_even_probability": round(break_even, 6),
+            "role": "look",
+        })
+    return tuple(sorted(out, key=lambda item: (item["forward"], item["distance"], item["side"])))
+
+
+def _quoted_cell(
+    grid: dict[str, Any] | None, side: str, distance: int = 1, forward: int = 1
+) -> dict[str, Any] | None:
+    return next(
+        (
+            cell for cell in _quoted_cells(grid)
+            if cell["side"] == side and cell["distance"] == distance and cell["forward"] == forward
+        ),
+        None,
+    )
+
+
+def _grid_context_summary(grid: dict[str, Any] | None) -> dict[str, Any]:
+    cells = _quoted_cells(grid)
+    history = grid.get("history") if isinstance(grid, dict) and isinstance(grid.get("history"), dict) else {}
+    safe_history = {
+        "window_s": history.get("window_s", 0),
+        "sample_count": history.get("sample_count", 0),
+        "change_bps": history.get("change_bps", 0),
+        "range_bps": history.get("range_bps", 0),
+        "samples": list(history.get("samples") or [])[-120:],
+    }
+    return {
+        "authoritative": bool(cells) and bool(grid and grid.get("authoritative") is True),
+        "reason": grid.get("reason") if isinstance(grid, dict) else "quote grid unavailable",
+        "multiplier_source": grid.get("multiplier_source") if isinstance(grid, dict) else None,
+        "quoted_grid_ref_time": grid.get("quoted_grid_ref_time") if isinstance(grid, dict) else None,
+        "forward_columns": grid.get("forward_columns", 0) if isinstance(grid, dict) else 0,
+        "cell_count": len(cells),
+        "history": safe_history,
+    }
+
+
 def _looking_at(grid: dict[str, Any] | None) -> tuple:
+    quoted = _quoted_cells(grid)
+    if quoted:
+        return quoted
     tiles = []
     for side, distance in (("up", 1), ("down", 1)):
         cx, cy = _map_cell(side, distance, grid)
@@ -347,6 +434,7 @@ def _pick_nearby(
 ) -> Suggestion:
     cell, label, hint = _square_copy(side, 1)
     cell_x, cell_y = _map_cell(side, 1, grid)
+    quoted = _quoted_cell(grid, side, 1, 1)
     return Suggestion(
         asset="ETH",
         side=side,
@@ -359,10 +447,13 @@ def _pick_nearby(
         cell_y=cell_y,
         cell_height=round(height, 8),
         looking_at=looking,
+        multiplier=quoted.get("multiplier") if quoted else None,
+        break_even_probability=quoted.get("break_even_probability") if quoted else None,
+        quoted_grid_ref_time=grid.get("quoted_grid_ref_time") if quoted and grid else None,
     )
 
 
-def compute_signal(
+def _compute_signal(
     ticks: Sequence[Tick] | "TickBuffer",
     *,
     now: float | None = None,
@@ -625,6 +716,7 @@ def compute_signal(
             **extra_fields,
         )
 
+    quoted = _quoted_cell(grid, bias, distance, 1)
     suggested = Suggestion(
         asset="ETH",
         side=bias,
@@ -637,6 +729,9 @@ def compute_signal(
         cell_y=cell_y,
         cell_height=round(height, 8),
         looking_at=looking,
+        multiplier=quoted.get("multiplier") if quoted else None,
+        break_even_probability=quoted.get("break_even_probability") if quoted else None,
+        quoted_grid_ref_time=grid.get("quoted_grid_ref_time") if quoted and grid else None,
     )
     reason = f"ETH {mom_pct:+.2f}% over last 5s{extra}{tf_note} → {hint}"
     if how == "with-trend":
@@ -748,3 +843,28 @@ class TickBuffer:
             if len(out) >= 8:
                 break
         return dict(sorted(out.items()))
+
+
+def compute_signal(
+    ticks: Sequence[Tick] | TickBuffer,
+    *,
+    now: float | None = None,
+    window_s: float = WINDOW_S,
+    size: float = DEFAULT_SIZE,
+    cell_height: float | None = None,
+    grid: dict[str, Any] | None = None,
+    ohlc: dict[str, Any] | None = None,
+    memory: SetupMemory | None = None,
+) -> Signal:
+    """Compute the tape signal and attach bounded quote-grid/history evidence."""
+    signal = _compute_signal(
+        ticks,
+        now=now,
+        window_s=window_s,
+        size=size,
+        cell_height=cell_height,
+        grid=grid,
+        ohlc=ohlc,
+        memory=memory,
+    )
+    return replace(signal, grid_context=_grid_context_summary(grid))

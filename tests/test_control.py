@@ -427,3 +427,29 @@ def test_make_server_rejects_non_localhost(tmp_path):
     with pytest.raises(ValueError, match="localhost only"):
         make_server(room, host="0.0.0.0", port=0)
     room.close()
+
+
+def test_grid_context_expires_fail_closed(tmp_path):
+    room = _room(tmp_path)
+    room.set_grid({
+        "authoritative": True,
+        "quoted_grid_ref_time": 1_700_000_000_000,
+        "multiplier_source": "quotesFeed",
+        "cells": [{
+            "cell_x": 4,
+            "cell_y": 8,
+            "forward": 1,
+            "forward_s": 5,
+            "side": "up",
+            "distance": 1,
+            "multiplier": 2.1,
+            "break_even_probability": 0.47619,
+        }],
+        "history": {"sample_count": 20, "window_s": 19, "change_bps": 4.0, "range_bps": 8.0},
+    })
+    assert room.status()["grid"]["authoritative"] is True
+    room._grid_seen = time.time() - 30
+    stale = room.status()["grid"]
+    assert stale["authoritative"] is False
+    assert stale["reason"] == "grid snapshot stale"
+    room.close()

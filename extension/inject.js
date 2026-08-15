@@ -485,6 +485,7 @@
     const gx = Math.floor(snap.now / snap.squareDuration);
     const gy = Math.floor(price / snap.dpl);
     const next = gx + 1;
+    // Always draw pink nearest candidates even when the signal sits.
     const nearby = [
       { x: next, y: gy + 1, role: "look", side: "up", hint: "above" },
       { x: next, y: gy - 1, role: "look", side: "down", hint: "below" },

@@ -1,4 +1,6 @@
 """Canned-tick tests for the nearby-square think signal. No network."""
+import pytest
+
 from src.analytics.signal import Tick, TickBuffer, compute_signal
 from src.analytics.timeframes import TF_KEYS, Bar
 
@@ -119,6 +121,63 @@ def test_maps_live_gridX_gridY_and_price_interval():
     assert sig.suggested.cell_y == 6001
     downs = [t for t in sig.looking_at if t["side"] == "down"]
     assert downs and downs[0]["cell_y"] == 5999
+
+
+def test_authoritative_grid_exposes_multipliers_lookahead_and_history():
+    t0 = 1_700_000_000.0
+    ticks = _ramp("ETH", 3000.0, 3003.6, 8, t0)
+    current_x, current_y = 340_000_001, 6007
+    cells = []
+    for forward in (1, 2, 3):
+        for side, dy in (("up", 1), ("down", -1)):
+            multiplier = 2.0 + forward * 0.1 + (0.02 if side == "up" else 0.0)
+            cells.append({
+                "cell_x": current_x + forward,
+                "cell_y": current_y + dy,
+                "forward": forward,
+                "forward_s": forward * 5,
+                "side": side,
+                "distance": 1,
+                "multiplier": multiplier,
+                "break_even_probability": round(1 / multiplier, 6),
+            })
+    grid = {
+        "authoritative": True,
+        "gridX": current_x,
+        "gridY": current_y,
+        "cell_height": 0.5,
+        "multiplier_source": "quotesFeed",
+        "quoted_grid_ref_time": 1_700_000_005_000,
+        "forward_columns": 3,
+        "cells": cells,
+        "history": {"window_s": 120, "sample_count": 50, "change_bps": 12.5, "range_bps": 18.0},
+    }
+    sig = compute_signal(ticks, now=t0 + 5.0, grid=grid, ohlc=_ohlc("up"))
+    body = sig.to_dict()
+    assert body["grid_context"]["authoritative"] is True
+    assert body["grid_context"]["cell_count"] == 6
+    assert body["grid_context"]["history"]["sample_count"] == 50
+    assert {c["forward"] for c in body["candidates"]} == {1, 2, 3}
+    assert all(c["multiplier"] > 1 for c in body["candidates"])
+    assert body["pick"]["multiplier"] == pytest.approx(2.12)
+    assert body["pick"]["break_even_probability"] == pytest.approx(round(1 / 2.12, 6))
+
+
+def test_stale_grid_never_claims_authoritative_multipliers():
+    t0 = 1_700_000_000.0
+    ticks = _ramp("ETH", 3000.0, 3003.6, 8, t0)
+    grid = {
+        "authoritative": False,
+        "reason": "quote grid stale",
+        "cell_x": 3,
+        "cell_y": 7,
+        "cell_height": 1.5,
+        "cells": [{"cell_x": 4, "cell_y": 8, "forward": 1, "side": "up", "distance": 1, "multiplier": 9.9}],
+    }
+    body = compute_signal(ticks, now=t0 + 5.0, grid=grid).to_dict()
+    assert body["grid_context"]["authoritative"] is False
+    assert body["grid_context"]["reason"] == "quote grid stale"
+    assert all("multiplier" not in c for c in body["candidates"])
 
 
 def test_old_ticks_outside_window_ignored():

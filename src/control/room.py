@@ -23,6 +23,7 @@ OHLC_TTL_S = 60.0
 LOOP_S = 0.5
 DECISION_KEEP = 40
 EXTENSION_STALE_S = 20.0
+GRID_STALE_S = 5.0
 EXTENSION_SOURCES = frozenset({"extension", "page", "dom", "ws"})
 
 
@@ -55,6 +56,7 @@ class ControlRoom:
         self.token_path = token_path
         self.size = size if size is not None else min(0.10, settings.MAX_TRADE_USDM)
         self.grid: dict[str, Any] | None = None
+        self._grid_seen: float | None = None
 
         self._lock = threading.Lock()
         self._cond = threading.Condition(self._lock)
@@ -115,7 +117,9 @@ class ControlRoom:
 
     def set_grid(self, grid: dict[str, Any] | None) -> None:
         if isinstance(grid, dict) and grid:
-            self.grid = dict(grid)
+            with self._lock:
+                self.grid = dict(grid)
+                self._grid_seen = time.time()
 
     def ingest_quotes(self, quotes: Any, source: str = "extension") -> int:
         if quotes is None:
@@ -178,8 +182,9 @@ class ControlRoom:
         ohlc = self._refresh_ohlc()
         now = time.time() if now is None else now
         with self._lock:
+            active_grid = self._active_grid_unlocked(now)
             sig = compute_signal(
-                self.ticks, now=now, size=self.size, grid=self.grid, ohlc=ohlc, memory=self.setups
+                self.ticks, now=now, size=self.size, grid=active_grid, ohlc=ohlc, memory=self.setups
             )
             self.last_signal = sig
             last = self.ticks.latest("ETH")
@@ -187,7 +192,7 @@ class ControlRoom:
                 sig,
                 self.ticks.snapshot(now=now),
                 now=now,
-                grid=self.grid,
+                grid=active_grid,
                 last_price=last.price if last else None,
             )
             if notify:
@@ -230,6 +235,7 @@ class ControlRoom:
                 "think": think,
                 "session": self.session.public_view(),
                 "extension": self._extension_view_unlocked(),
+                "grid": self._grid_view_unlocked(),
                 "seq": self._seq,
                 "decisions": list(self.decisions)[-20:],
             }
@@ -259,6 +265,38 @@ class ControlRoom:
     def _session_fresh(self, now: float) -> bool:
         seen = self._session_seen
         return bool(seen is not None and now - seen <= EXTENSION_STALE_S)
+
+    def _active_grid_unlocked(self, now: float | None = None) -> dict[str, Any] | None:
+        if not self.grid:
+            return None
+        now = time.time() if now is None else now
+        view = dict(self.grid)
+        seen = self._grid_seen
+        if seen is None or now - seen > GRID_STALE_S:
+            view["authoritative"] = False
+            view["reason"] = "grid snapshot stale"
+            view["cells"] = []
+        return view
+
+    def _grid_view_unlocked(self, now: float | None = None) -> dict[str, Any]:
+        view = self._active_grid_unlocked(now) or {}
+        history = view.get("history") if isinstance(view.get("history"), dict) else {}
+        cells = list(view.get("cells") or [])[:64]
+        return {
+            "authoritative": bool(view.get("authoritative") is True and cells),
+            "reason": view.get("reason"),
+            "multiplier_source": view.get("multiplier_source"),
+            "quoted_grid_ref_time": view.get("quoted_grid_ref_time"),
+            "forward_columns": view.get("forward_columns", 0),
+            "cell_count": len(cells),
+            "cells": cells,
+            "history": {
+                "window_s": history.get("window_s", 0),
+                "sample_count": history.get("sample_count", 0),
+                "change_bps": history.get("change_bps", 0),
+                "range_bps": history.get("range_bps", 0),
+            },
+        }
 
     def _extension_view_unlocked(self, now: float | None = None) -> dict[str, Any]:
         now = time.time() if now is None else now
