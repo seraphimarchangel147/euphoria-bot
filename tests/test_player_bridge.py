@@ -77,6 +77,35 @@ def test_player_event_append_rejects_orphan_duplicate_or_mismatched_settlement(t
         raise AssertionError("duplicate settlement accepted")
 
 
+def test_status_view_exposes_quoted_grid_when_control_loop_is_stopped():
+    bridge = load_script("euphoria_bridge_server_status", "euphoria-bridge-server.py")
+    grid = {
+        "authoritative": True,
+        "multiplier_source": "quotesFeed",
+        "quoted_grid_ref_time": 1_700_000_000_123,
+        "cells": [{
+            "cell_x": 340_000_001,
+            "cell_y": 6001,
+            "side": "up",
+            "distance": 1,
+            "multiplier": 2.5,
+            "break_even_probability": 0.4,
+        }],
+    }
+    state = {
+        "ts": "2026-08-15T04:30:02Z",
+        "tabs": [],
+        "cookieNames": [],
+        "control": {"running": False},
+        "extVersion": "0.4.0",
+        "grid": grid,
+    }
+    view = bridge.status_view(state, now=1_786_768_202.0)
+    assert view["control"] == {"running": False}
+    assert view["grid"] == grid
+    assert view["grid"]["cells"][0]["multiplier"] == 2.5
+
+
 def test_bridge_token_is_high_entropy_and_pinned(tmp_path):
     bridge = load_script("euphoria_bridge_server_token", "euphoria-bridge-server.py")
     token_path = tmp_path / "bridge-token"

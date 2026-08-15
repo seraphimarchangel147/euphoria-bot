@@ -81,6 +81,12 @@ async function controlRoomStatus() {
 
 async function pushState() {
   const [cookies, tabs, control] = await Promise.all([euCookieTrio(), euTabs(), controlRoomStatus()]);
+  // Read the quoted grid directly from the page content script. This is
+  // intentionally independent of the control-room loop: manual mode and a
+  // stopped/offline control room must not erase the offered multipliers needed
+  // for read-only EV logging.
+  const page = tabs[0] ? await readPage(tabs[0].id) : null;
+  const grid = page && page.grid && typeof page.grid === "object" ? page.grid : null;
   await bridgeFetch("/euphoria/state", {
     method: "POST",
     body: {
@@ -89,6 +95,7 @@ async function pushState() {
       cookies, // localhost-only transport; WSL server stores 0600
       tabs,
       control,
+      grid,
       extVersion: chrome.runtime.getManifest().version,
     },
   });

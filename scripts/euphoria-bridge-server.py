@@ -167,6 +167,29 @@ def append_player_event(event: dict[str, Any], target: Path = PLAYER_EVENTS) -> 
     return {"ok": True, "event_type": event["event_type"], "tap_id": event.get("tap_id")}
 
 
+def status_view(state: dict[str, Any], now: float | None = None) -> dict[str, Any]:
+    """Public bridge snapshot, including raw quoted-grid context.
+
+    The grid is relayed independently of the optional control room so manual
+    play remains measurable while the control loop is stopped or unavailable.
+    """
+    age: float | None = None
+    if state.get("ts"):
+        dt = datetime.fromisoformat(str(state["ts"]).replace("Z", "+00:00"))
+        current = datetime.fromtimestamp(time.time() if now is None else now, timezone.utc)
+        age = (current - dt).total_seconds()
+    return {
+        "ok": True,
+        "lastState": state.get("ts"),
+        "ageSeconds": None if age is None else round(age, 1),
+        "tabs": state.get("tabs"),
+        "cookieNames": state.get("cookieNames"),
+        "control": state.get("control"),
+        "grid": state.get("grid"),
+        "extVersion": state.get("extVersion"),
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, obj: Any, code: int = 200) -> None:
         body = json.dumps(obj, allow_nan=False).encode()
@@ -248,19 +271,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/euphoria/status":
             try:
                 state = json.loads(STATE.read_text())
-                age: float | None = None
-                if state.get("ts"):
-                    dt = datetime.fromisoformat(str(state["ts"]).replace("Z", "+00:00"))
-                    age = (datetime.now(timezone.utc) - dt).total_seconds()
-                return self._send({
-                    "ok": True,
-                    "lastState": state.get("ts"),
-                    "ageSeconds": None if age is None else round(age, 1),
-                    "tabs": state.get("tabs"),
-                    "cookieNames": state.get("cookieNames"),
-                    "control": state.get("control"),
-                    "extVersion": state.get("extVersion"),
-                })
+                return self._send(status_view(state))
             except Exception:
                 return self._send({"ok": False, "error": "no state yet — extension not connected"})
 
