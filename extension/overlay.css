@@ -115,3 +115,23 @@
   margin-top: 6px;
   color: #8b95a8;
 }
+#euphoria-bot-overlay .ebo-player-edge {
+  margin-top: 7px;
+  color: #6ee7d8;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+#euphoria-bot-overlay .ebo-tilt {
+  margin-top: 7px;
+  padding: 5px 7px;
+  border: 1px solid #ff6b6b;
+  border-radius: 5px;
+  background: rgba(120, 20, 24, 0.3);
+  color: #ff9b9b;
+  font-weight: 750;
+}
+#euphoria-bot-overlay #ebo-projection.low {
+  color: #9aa3b2;
+  border-color: rgba(154, 163, 178, 0.45);
+  filter: grayscale(1);
+}

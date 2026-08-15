@@ -453,3 +453,15 @@ def test_grid_context_expires_fail_closed(tmp_path):
     assert stale["authoritative"] is False
     assert stale["reason"] == "grid snapshot stale"
     room.close()
+
+
+def test_session_projection_is_exposed_inside_think_payload(tmp_path):
+    room = _room(tmp_path)
+    projection = {
+        "accuracy_badge": "75%",
+        "low_confidence": False,
+        "points": [{"horizon_s": 5, "forward": 1, "expected_cell_y": 6001, "cell_range_68pct": [6000, 6002], "p_up": 0.6, "p_down": 0.4}],
+    }
+    room.ingest_session({"projection": projection})
+    assert room.payload()["projection"] == projection
+    room.close()

@@ -23,6 +23,9 @@
   let lastChartQuoteAt = 0;
   let lastChartQuotePrice = null;
   let pageHistory = [];
+  let lastCaptureContext = null;
+  let lastCaptureSnap = null;
+
   let tfEl = null;
   let reasonEl = null;
   let gradeEl = null;
@@ -38,6 +41,24 @@
 
   function emit(type, payload) {
     window.postMessage({ source: SOURCE, type, payload }, "*");
+  }
+
+  const captureApi = window.__euphoriaPlayerCapture;
+  const playerJoiner = captureApi && typeof captureApi.PlayerEventJoiner === "function"
+    ? new captureApi.PlayerEventJoiner({
+        emit: (row) => {
+          const event = captureApi.validatePlayerEvent(row);
+          if (event) emit("player-event", event);
+        },
+        maxDelayMs: 10000,
+      })
+    : null;
+
+  function inspectSettlement(raw, source) {
+    if (!playerJoiner || !captureApi || typeof captureApi.extractSettlement !== "function") return;
+    const result = captureApi.extractSettlement(raw, Date.now(), source);
+    if (!result) return;
+    playerJoiner.addResult(result);
   }
 
   function sane(symbol, price) {
@@ -143,7 +164,10 @@
     const Wrapped = new Proxy(OrigWS, {
       construct(Target, args) {
         const ws = new Target(...args);
-        ws.addEventListener("message", (ev) => onQuotes(ev.data));
+        ws.addEventListener("message", (ev) => {
+          onQuotes(ev.data);
+          inspectSettlement(ev.data, { kind: "websocket", url: String(args[0] || "") });
+        });
         return ws;
       },
     });
@@ -154,7 +178,13 @@
   const origFetch = window.fetch;
   window.fetch = function (...args) {
     tryInspectRequest(args[0], args[1]);
-    return origFetch.apply(this, args);
+    return origFetch.apply(this, args).then((response) => {
+      try {
+        const url = String(response.url || args[0] || "");
+        response.clone().text().then((body) => inspectSettlement(body, { kind: "fetch", url })).catch(() => {});
+      } catch { /* opaque response */ }
+      return response;
+    });
   };
 
   const origOpen = XMLHttpRequest.prototype.open;
@@ -165,6 +195,7 @@
   };
   XMLHttpRequest.prototype.send = function (body) {
     tryInspectRequest(this.__euphoriaUrl, { body });
+    this.addEventListener("load", () => inspectSettlement(this.responseText, { kind: "xhr", url: String(this.responseURL || this.__euphoriaUrl || "") }));
     return origSend.apply(this, arguments);
   };
 
@@ -398,6 +429,62 @@
     const left = gx * snap.cellSize + snap.offset.x;
     const top = snap.offset.y - (gy + 1) * snap.cellSize;
     return { left, top, right: left + snap.cellSize, bottom: top + snap.cellSize };
+  }
+
+  function pointerCell(gs, snap, x, y) {
+    if (!gs || !snap) return null;
+    const state = gs.state || {
+      offset: snap.offset,
+      zoom: snap.zoom,
+      canvasWidth: snap.w,
+      canvasHeight: snap.h,
+    };
+    const attempts = [];
+    if (typeof gs.screenToCell === "function") attempts.push(() => gs.screenToCell(x, y));
+    if (gs.coords && typeof gs.coords.screenToCell === "function") {
+      attempts.push(() => gs.coords.screenToCell(x, y, state));
+      attempts.push(() => gs.coords.screenToCell({ x, y }, state));
+    }
+    for (const attempt of attempts) {
+      try {
+        const value = attempt();
+        if (value && Number.isFinite(Number(value.x ?? value.cellX)) && Number.isFinite(Number(value.y ?? value.cellY))) {
+          return { x: Number(value.x ?? value.cellX), y: Number(value.y ?? value.cellY) };
+        }
+      } catch { /* try the observed signature variants */ }
+    }
+    for (const cell of (lastCaptureContext && lastCaptureContext.cells) || []) {
+      const bounds = cellBounds(gs, snap, Number(cell.cell_x), Number(cell.cell_y));
+      if (bounds && x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom) {
+        return { x: Number(cell.cell_x), y: Number(cell.cell_y) };
+      }
+    }
+    return null;
+  }
+
+  function observePlayerTap(ev) {
+    if (!playerJoiner || !captureApi || typeof captureApi.resolveTap !== "function") return;
+    if (!tradeCanvas || ev.button !== 0 || !ev.isTrusted) return;
+    const path = typeof ev.composedPath === "function" ? ev.composedPath() : [];
+    if (ev.target !== tradeCanvas && !path.includes(tradeCanvas)) return;
+    const rect = tradeCanvas.getBoundingClientRect();
+    const snap = lastCaptureSnap;
+    const gs = gridState || chart?.gridState;
+    const tap = captureApi.resolveTap({
+      ts: Date.now(),
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+      rect,
+      canvasSize: snap ? { width: snap.w, height: snap.h } : { width: tradeCanvas.width, height: tradeCanvas.height },
+      context: lastCaptureContext,
+      screenToCell: (x, y) => pointerCell(gs, snap, x, y),
+      quoteCell: (cellX, cellY) => {
+        const feed = chart && chart.quotesFeed;
+        if (!feed || feed.isStale === true || typeof feed.getMultiplierForCell !== "function") return null;
+        return feed.getMultiplierForCell(cellX, cellY);
+      },
+    });
+    playerJoiner.addTap(tap);
   }
 
   function ensureLayer() {
@@ -744,6 +831,8 @@
         })
       : { authoritative: false, reason: "grid context helper unavailable", cells: [] };
     const meta = { ...baseMeta, ...context };
+    lastCaptureContext = meta;
+    lastCaptureSnap = snap;
     const key = `${meta.gridX}:${meta.gridY}:${meta.dollars_per_line}`;
     const now = Date.now();
     if (key !== lastGridKey || now - lastGridEmit > 1000) {
@@ -822,6 +911,7 @@
   setInterval(scrapeDom, 2000);
   setInterval(emitChartQuote, 500);
   setInterval(discoverChart, 2000);
+  document.addEventListener("pointerup", observePlayerTap, true);
   discoverChart();
   if (!rafId) rafId = window.requestAnimationFrame(loop);
 })();

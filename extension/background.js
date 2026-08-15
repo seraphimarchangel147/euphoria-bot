@@ -1,5 +1,5 @@
 /* bridge.js: Legion WSL eyes (state out + read-only queries). Cherubim 2026-08-14 */
-try { importScripts("bridge.js"); } catch (e) { console.warn("bridge.js not loaded:", e); }
+try { importScripts("bridge.js", "player-capture.js"); } catch (e) { console.warn("bridge helpers not loaded:", e); }
 
 /* Helper for a normal logged-in Euphoria tab: session cookies, page prices, overlay.
    host_permissions cover 127.0.0.1 — content scripts on https://euphoria.finance
@@ -104,6 +104,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }
     if (msg.type === "artefacts") {
       sendResponse(await pushSession(msg.artefacts || {}));
+      return;
+    }
+    if (msg.type === "player-event") {
+      const validator = globalThis.__euphoriaPlayerCapture && globalThis.__euphoriaPlayerCapture.validatePlayerEvent;
+      const trustedSender = typeof _sender.url === "string" && /^https:\/\/(?:www\.)?euphoria\.finance\//.test(_sender.url);
+      const event = trustedSender && typeof validator === "function" ? validator(msg.event) : null;
+      const result = event && typeof bridgeFetch === "function"
+        ? await bridgeFetch("/euphoria/player-event", { method: "POST", body: event })
+        : null;
+      sendResponse(result || { ok: false, error: event ? "bridge offline" : "invalid player event" });
       return;
     }
     if (msg.type === "status") {

@@ -11,7 +11,9 @@ let lastStatus = null;
 let lastVisiblePrice = null;
 let lastVisiblePriceAt = 0;
 let lastGridSnapshot = null;
-const CONTENT_BUILD = "0.3.0-grid-context";
+let trustedPointer = null;
+const pendingPlayerTaps = new Map();
+const CONTENT_BUILD = "0.4.0-player-capture";
 
 function injectPageHook() {
   const parent = document.head || document.documentElement;
@@ -19,10 +21,16 @@ function injectPageHook() {
   helper.src = chrome.runtime.getURL("grid-context.js");
   helper.onload = () => {
     helper.remove();
-    const hook = document.createElement("script");
-    hook.src = chrome.runtime.getURL("inject.js");
-    hook.onload = () => hook.remove();
-    parent.appendChild(hook);
+    const capture = document.createElement("script");
+    capture.src = chrome.runtime.getURL("player-capture.js");
+    capture.onload = () => {
+      capture.remove();
+      const hook = document.createElement("script");
+      hook.src = chrome.runtime.getURL("inject.js");
+      hook.onload = () => hook.remove();
+      parent.appendChild(hook);
+    };
+    parent.appendChild(capture);
   };
   parent.appendChild(helper);
 }
@@ -64,6 +72,15 @@ function viaWorker(msg) {
     }
   });
 }
+
+document.addEventListener("pointerup", (ev) => {
+  const path = typeof ev.composedPath === "function" ? ev.composedPath() : [];
+  const canvas = path.find((node) => node instanceof HTMLCanvasElement) || (ev.target instanceof HTMLCanvasElement ? ev.target : null);
+  if (!ev.isTrusted || ev.button !== 0 || !canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width < 180 || rect.height < 180) return;
+  trustedPointer = { ts: Date.now(), client_x: ev.clientX, client_y: ev.clientY };
+}, true);
 
 function unwrapStatus(resp) {
   if (!resp) return null;
@@ -116,6 +133,27 @@ window.addEventListener("message", (ev) => {
   }
   if (data.type === "grid-hook" && data.payload) {
     paintGridHook(data.payload.hook || data.payload);
+  }
+  if (data.type === "player-event" && data.payload) {
+    const validator = globalThis.__euphoriaPlayerCapture && globalThis.__euphoriaPlayerCapture.validatePlayerEvent;
+    const event = typeof validator === "function" ? validator(data.payload) : null;
+    if (!event) return;
+    if (event.event_type === "player-tap") {
+      const pointer = event.pointer || {};
+      const trusted = trustedPointer && Math.abs(event.ts - trustedPointer.ts) <= 750 &&
+        Math.abs(Number(pointer.client_x) - trustedPointer.client_x) <= 3 &&
+        Math.abs(Number(pointer.client_y) - trustedPointer.client_y) <= 3;
+      trustedPointer = null;
+      if (!trusted) return;
+      pendingPlayerTaps.set(event.tap_id, event);
+      viaWorker({ type: "player-event", event });
+      return;
+    }
+    const tap = pendingPlayerTaps.get(event.tap_id);
+    if (!tap || event.ts < tap.ts || event.ts - tap.ts > 10000) return;
+    if (tap.cell && event.cell && (tap.cell.x !== event.cell.x || tap.cell.y !== event.cell.y)) return;
+    pendingPlayerTaps.delete(event.tap_id);
+    viaWorker({ type: "player-event", event });
   }
 });
 

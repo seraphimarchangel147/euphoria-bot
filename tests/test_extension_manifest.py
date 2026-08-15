@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parent.parent / "extension"
 def test_manifest_is_mv3_with_required_hosts():
     manifest = json.loads((ROOT / "manifest.json").read_text())
     assert manifest["manifest_version"] == 3
+    assert manifest["version"] == "0.4.0"
+    assert "player" in manifest["description"].lower()
     hosts = manifest["host_permissions"]
     assert "https://euphoria.finance/*" in hosts
     assert "https://api.mainnet.euphoria.finance/*" in hosts

@@ -27,6 +27,31 @@ GRID_STALE_S = 5.0
 EXTENSION_SOURCES = frozenset({"extension", "page", "dom", "ws"})
 
 
+def _projection_view(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    badge = value.get("accuracy_badge")
+    points = value.get("points")
+    if not isinstance(badge, str) or not badge or len(badge) > 64 or not isinstance(points, list) or len(points) > 3:
+        return None
+    clean_points: list[dict[str, Any]] = []
+    for row in points:
+        if not isinstance(row, dict) or row.get("horizon_s") not in {5, 10, 15} or row.get("forward") not in {1, 2, 3}:
+            return None
+        expected = row.get("expected_cell_y")
+        interval = row.get("cell_range_68pct")
+        p_up, p_down = row.get("p_up"), row.get("p_down")
+        numeric = (expected, p_up, p_down)
+        if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in numeric):
+            return None
+        if not isinstance(interval, list) or len(interval) != 2 or any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in interval):
+            return None
+        if interval[0] > expected or interval[1] < expected or not 0 <= p_up <= 1 or not 0 <= p_down <= 1:
+            return None
+        clean_points.append(dict(row))
+    return {**value, "accuracy_badge": badge, "low_confidence": value.get("low_confidence") is True, "points": clean_points}
+
+
 class ControlError(ValueError):
     pass
 
@@ -57,6 +82,7 @@ class ControlRoom:
         self.size = size if size is not None else min(0.10, settings.MAX_TRADE_USDM)
         self.grid: dict[str, Any] | None = None
         self._grid_seen: float | None = None
+        self.projection: dict[str, Any] | None = None
 
         self._lock = threading.Lock()
         self._cond = threading.Condition(self._lock)
@@ -162,6 +188,9 @@ class ControlRoom:
         if payload.get("grid"):
             self.set_grid(payload.get("grid"))
         with self._lock:
+            projection = _projection_view(payload.get("projection"))
+            if projection is not None:
+                self.projection = projection
             changed = apply_payload(self.session, payload, now=time.time())
             view = self.session.public_view()
             if changed:
@@ -208,6 +237,8 @@ class ControlRoom:
             if last:
                 body["price"] = last.price
                 body["asset"] = last.symbol
+            if self.projection is not None:
+                body["projection"] = dict(self.projection)
             return body
         body = sig.to_dict()
         body["grade"] = self.scoreboard.to_dict()
@@ -216,6 +247,8 @@ class ControlRoom:
             last = self.ticks.latest(body.get("asset") or "ETH") or self.ticks.latest("ETH")
             if last:
                 body["price"] = last.price
+        if self.projection is not None:
+            body["projection"] = dict(self.projection)
         return body
 
     def think_payload(self, now: float | None = None) -> dict[str, Any]:

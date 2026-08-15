@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Euphoria helper",
-  "version": "0.3.0",
-  "description": "Helper overlay for a logged-in Euphoria tab: page prices, session cookies, and what the local control room is thinking.",
+  "version": "0.4.0",
+  "description": "Manual player-learning helper: trusted tap capture, statistical advice, and confidence-gated projection overlay for a logged-in Euphoria tab.",
   "permissions": [
     "alarms",
     "cookies",
@@ -26,6 +26,8 @@
         "https://www.euphoria.finance/*"
       ],
       "js": [
+        "player-capture.js",
+        "player-advice.js",
         "content.js"
       ],
       "css": [
@@ -38,7 +40,9 @@
     {
       "resources": [
         "inject.js",
-        "grid-context.js"
+        "grid-context.js",
+        "player-capture.js",
+        "player-advice.js"
       ],
       "matches": [
         "https://euphoria.finance/*",

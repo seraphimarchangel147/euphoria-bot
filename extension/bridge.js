@@ -22,11 +22,26 @@ const BRIDGE_BASE = "http://127.0.0.1:18901";
 const EU_COOKIES = ["privy-token", "privy-id-token", "privy-session"];
 const POLL_MS = 5000;
 
+function randomBridgeToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function bridgeToken() {
+  const stored = await chrome.storage.local.get(["euphoriaBridgeToken"]);
+  if (/^[0-9a-f]{64}$/.test(stored.euphoriaBridgeToken || "")) return stored.euphoriaBridgeToken;
+  const token = randomBridgeToken();
+  await chrome.storage.local.set({ euphoriaBridgeToken: token });
+  return token;
+}
+
 async function bridgeFetch(path, opts = {}) {
   try {
+    const token = await bridgeToken();
     const r = await fetch(BRIDGE_BASE + path, {
       method: opts.method || "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Euphoria-Bridge-Token": token },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
     return await r.json().catch(() => ({}));
