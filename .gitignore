@@ -8,3 +8,4 @@ build/
 node_modules/
 .pytest_cache/
 tokens.json
+session.json
