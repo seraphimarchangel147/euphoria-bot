@@ -192,6 +192,8 @@ def test_bm_over_ou_ratio_at_middle_barrier_is_order_2_to_4_for_theta_T_around_1
     assert abs(p_bm - 0.25) < 0.01
     assert 0.0 < p_ou < p_bm
     ratio = p_bm / p_ou
+    # Fine CN + interpolated Euler sit near 2.1. Money-man's 2.45 is the
+    # coarse-step Euler (missed crossings). Do not tune the PDE to 2.45.
     assert 2.0 < ratio < 5.0, f"BM/OU={ratio:.3f} p_bm={p_bm:.4f} p_ou={p_ou:.4f}"
 
     mc = _mc_one_sided(0.0, barrier, T, theta, sigma, n_paths=3000, n_steps=500, seed=21)
@@ -208,9 +210,17 @@ def test_bm_over_ou_ratio_at_middle_barrier_is_order_2_to_4_for_theta_T_around_1
 
 def test_anti_reverting_window_is_not_clamped_to_a_fake_calm_theta():
     """Momentum is not a calm OU. Clamping θ>0 made a trend look mean-reverting."""
+    rng = random.Random(5)
     t0 = 1_700_000_000.0
-    times = [t0 + i * 0.5 for i in range(90)]
-    prices = [2000.0 + 0.08 * i for i in range(90)]  # steady walk, six+ rows
+    dt = 0.5
+    times = [t0 + i * dt for i in range(90)]
+    # Discrete anti-OU: Δx = +κ(x−μ)Δt + noise. A linear ramp is degenerate
+    # for Theil–Sen (constant Δx ⇒ slope 0 ⇒ "thin"). This one runs away.
+    mu0 = 2000.0
+    prices = [mu0 + 0.20]
+    for _ in range(89):
+        x = prices[-1]
+        prices.append(x + 0.55 * (x - mu0) * dt + 0.015 * rng.gauss(0.0, 1.0))
     fit = fit_ou(times, prices)
     assert fit.ok is False
     assert fit.reason == "anti-reverting"
