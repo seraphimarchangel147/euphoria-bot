@@ -47,6 +47,11 @@ PRIVY_CLIENT = os.environ.get("EUPHORIA_PRIVY_CLIENT", "react-auth:2.13.4")
 TOKEN_STORE = Path(
     os.environ.get("EUPHORIA_TOKEN_STORE", str(Path.home() / ".euphoria" / "tokens.json"))
 )
+# Per-quote cell-edge tape. Empty / missing file = empty ledger.
+# Historical reachability (d, h) rows cannot be imported. Clock starts empty.
+CELL_EDGE_STORE = Path(
+    os.environ.get("EUPHORIA_CELL_EDGE_STORE", str(Path.home() / ".euphoria" / "cell_edge.json"))
+)
 
 # --- Proxy (geo-block bypass) ---------------------------------------------
 PROXY_URL = os.environ.get("EUPHORIA_PROXY", "") or None
