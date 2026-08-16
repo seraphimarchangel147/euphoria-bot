@@ -132,13 +132,16 @@ def test_observe_uses_passed_now_rather_than_wall_clock(monkeypatch):
     monkeypatch.setattr(time, "time", boom)
 
     regime = RollingVolRegime()
-    # Far in the past relative to any real wall clock. If observe
-    # stamped with time.time(), the window at this `now` would be empty
-    # (or this test would have already raised).
-    regime.observe(1.0, now=100.0)
-    regime.observe(2.0, now=200.0)
+    # Stamps far in the past relative to any real wall clock. If
+    # observe had called time.time(), this test would already have
+    # raised. If it had stamped with a live clock, the samples would
+    # still be inside WINDOW_S of a query at `later` below.
+    regime.observe(1.0, now=0.0)
+    regime.observe(2.0, now=10.0)
 
-    assert regime.stats(now=200.0)["window_n"] == 2
-    assert regime.stats(now=50.0)["window_n"] == 0
-    assert regime.bucket(1.5, now=200.0) == UNKNOWN
+    assert regime.stats(now=10.0)["window_n"] == 2
+    assert regime.stats(now=-1.0)["window_n"] == 0
+    later = 10.0 + WINDOW_S + 1
+    assert regime.stats(now=later)["window_n"] == 0
+    assert regime.bucket(1.5, now=10.0) == UNKNOWN
     assert time.time is boom

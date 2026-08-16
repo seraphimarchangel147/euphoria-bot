@@ -84,14 +84,18 @@ class RollingVolRegime:
         self._samples.append((float(now), float(value)))
 
     def _window(self, now: float) -> list[tuple[float, float]]:
-        cutoff = float(now) - self.window_s
-        return [(ts, v) for ts, v in self._samples if ts >= cutoff]
+        now = float(now)
+        cutoff = now - self.window_s
+        # Closed interval [now - WINDOW_S, now]. The lower bound is the
+        # bug fix (drop older KEEP history). The upper bound is causality:
+        # a stamp after `now` is look-ahead, not a regime.
+        return [(ts, v) for ts, v in self._samples if cutoff <= ts <= now]
 
     def _values(self, now: float) -> list[float]:
         return [v for _, v in self._window(now)]
 
     def thresholds(self, *, now: float) -> tuple[float, float] | None:
-        """1/3 and 2/3 cuts of samples with ``ts >= now - WINDOW_S``.
+        """1/3 and 2/3 cuts of samples with ``now - WINDOW_S <= ts <= now``.
 
         Returns None until the rolling window has MIN_SAMPLES points.
         Whole-history samples older than the window are ignored even
