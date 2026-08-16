@@ -147,11 +147,12 @@ def test_edge_z_is_rate_minus_breakeven_over_wilson_se():
 def test_beats_true_is_not_a_tap_signal():
     """A manufactured +EV key is still measurement-only. SYNTHETIC.
 
-    180/200 at 1.05x is +EV on these rows. That cannot justify a bet.
-    Window 8765 is on the user's machine; this is not that window.
+    192/200 at 1.05x is +EV on these rows (breakeven 1/1.05 ≈ 0.952).
+    That cannot justify a bet. Window 8765 is on the user's machine;
+    this is not that window.
     """
     ledger = CellEdgeLedger()
-    ledger.observe_many((1.05, i < 180) for i in range(200))
+    ledger.observe_many((1.05, i < 192) for i in range(200))
     scored = ledger.edge(1.05)
     assert scored is not None
     assert scored["beats"] is True
