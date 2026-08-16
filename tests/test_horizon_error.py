@@ -22,10 +22,12 @@ from src.analytics.horizon_error import (
     SPEARMAN_PRED_ACTUAL,
     classic_bm_vs_ou_ratio,
     evaluate_all,
+    hit_prob,
     live_hit_prob,
     live_sigma_eff,
-    live_spread,
     money_man_bm_over_ou,
+    ou_rms,
+    spread,
     predicted_to_actual_ratio,
     shortest_vs_longest_ratio,
     tap_band_has_good_news,
@@ -94,11 +96,12 @@ def test_missing_mean_reversion_at_fixed_predicted_p_overrates_short_horizons_mo
 
 def test_the_live_041_slice_is_pinned():
     """At predicted 0.41, shortest bucket realised 0.13×, longest 0.81×,
-    n from the 111,381-cell table. The helper's sign and ordering must
-    match. This does not recover 0.13 and 0.81 to three decimals — it
-    recovers the ordering and a factor-of-two hole at short T. Do not
-    dress that up as the table. Confirmation is synthetic. Too small
-    to claim a shadow move. Baseline −0.2712 / 453 / 48.3%.
+    n=111381 labelled cells. The helper's sign and ordering must match.
+    This does not recover 0.13 and 0.81 to three decimals — those
+    numbers are from the live table, which is not in this repo. The
+    helper recovers the ordering and a factor-of-two hole at short T.
+    Do not dress that up. Confirmation is synthetic. Too small to
+    claim a shadow move. Baseline −0.2712 / 453 / 48.3%.
     """
     assert N_LABELLED_CELLS == 111_381
     assert MEASURED_SHORT_X == 0.13
@@ -106,10 +109,13 @@ def test_the_live_041_slice_is_pinned():
     assert P_SLICE == 0.41
     assert SPEARMAN_PRED_ACTUAL == 0.996
 
-    # Live contract: sigma_eff = spread / sqrt(T) ⇒ p = 2Φ(-d / spread).
-    spread = live_spread(1.0, SHORT_HORIZON_S, LIVE_H)
-    assert abs(live_sigma_eff(spread, SHORT_HORIZON_S) - spread / SHORT_HORIZON_S**0.5) < 1e-12
-    assert 0.0 < live_hit_prob(spread * 0.824, 1.0, SHORT_HORIZON_S, LIVE_H) < 1.0
+    # Local helpers only: spread = σ T^H, mu=0 reflection, OU RMS stand-in.
+    spr = spread(1.0, SHORT_HORIZON_S, LIVE_H)
+    assert spr == 1.0 * SHORT_HORIZON_S**LIVE_H
+    assert abs(hit_prob(spr * 0.824, 1.0, SHORT_HORIZON_S, LIVE_H) - live_hit_prob(spr * 0.824, 1.0, SHORT_HORIZON_S, LIVE_H)) < 1e-12
+    assert ou_rms(SHORT_HORIZON_S, 0.0) == SHORT_HORIZON_S**0.5
+    assert ou_rms(40.0, 0.03) < ou_rms(40.0, 0.0)
+    assert abs(live_sigma_eff(spr, SHORT_HORIZON_S) - spr / SHORT_HORIZON_S**0.5) < 1e-12
 
     d = verdict("D")
     assert d["hypothesis"] == "D"

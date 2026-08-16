@@ -1,13 +1,14 @@
 """Horizon-structured error in the live barrier-touch quote.
 
-Live forecast math (forecast.py, not edited here). ``sigma`` is the mean
-of ``dp^2/dt`` over consecutive settlement ticks (~16 Hz page / ws /
-extension). Units: price / sqrt(second). ``spread(sigma, T, H)`` is
-``sigma * T^H`` inside the fitted window; beyond ``fitted_to_s`` it
-blends H back toward 0.5. ``HURST_MIN, HURST_MAX = 0.05, 0.50``. Live H
-pins to the 0.05 floor (the estimator wants lower; house quotes imply
-~0.09). ``hit_prob`` is BM reflection with ``sigma_eff = spread / sqrt(T)``,
-so ``p = 2 Φ(-d / spread)``. The table is sliced at *predicted* p.
+Helpers are re-implemented here. This module does not import forecast.py,
+signal.py, or any other live analytics file (those are untracked on the
+owner's machine and are not on GitHub main).
+
+``spread(sigma, T, H) = sigma * T^H``. ``hit_prob`` is mu = 0 BM
+reflection: ``p = 2 Φ(-d / spread)``. ``ou_rms`` is the OU integrated-
+variance stand-in, saturating at ``sigma / sqrt(2θ)``. Live H pins at
+0.05 (estimator wants lower; house quotes imply ~0.09). The table is
+sliced at *predicted* p.
 
 Measured signature, 111,381 labelled cells (all labelled, not the
 selected ~180). Spearman(pred, actual) = +0.996. At predicted p = 0.41
@@ -53,13 +54,7 @@ almost perfect while the level is a lie. The ``fitted_to_s`` blend
 toward H = 0.5 is not the 5s-vs-40s split if that window is inside the
 fitted range.
 
-Changelog (for the owner's local CHANGELOG.md; this file does not
-write that tree): 2026-08-16 / horizon desk / src/analytics/horizon_error.py
-+ tests/test_horizon_error.py / analysis + pin test, not a shadow-traded
-model, 8765 not restarted / measured signature n = 111,381 labelled
-cells; confirmation synthetic; baseline −0.2712 / 453 / 48.3%; too
-small to claim a shadow move / open: tiny-p 16–20× under-prediction;
-what residual of the 16.6× tick estimator survives smoothing.
+This is analysis plus a pin test, not a shadow-traded model.
 """
 
 from __future__ import annotations
@@ -121,8 +116,31 @@ def touch_p_from_k(k: float) -> float:
     return min(1.0, 2.0 * _phi(-k))
 
 
+def spread(sigma: float, horizon_s: float, hurst: float) -> float:
+    """``sigma * T^H``. No live-module import; unclamped."""
+    if horizon_s <= 0.0 or sigma <= 0.0:
+        raise ValueError("sigma and horizon_s must be positive")
+    if hurst <= 0.0:
+        raise ValueError("hurst must be positive")
+    return sigma * (horizon_s**hurst)
+
+
+def hit_prob(distance: float, sigma: float, horizon_s: float, hurst: float) -> float:
+    """Mu = 0 BM reflection: ``p = 2 Φ(-d / spread)``."""
+    return touch_p_from_k(distance / spread(sigma, horizon_s, hurst))
+
+
+def ou_rms(horizon_s: float, theta: float, sigma: float = 1.0) -> float:
+    """OU RMS stand-in. ``sqrt((σ²/2θ)(1-e^{-2θT}))``, else ``σ √T``."""
+    if horizon_s <= 0.0 or sigma <= 0.0:
+        raise ValueError("sigma and horizon_s must be positive")
+    if theta <= 0.0:
+        return sigma * math.sqrt(horizon_s)
+    return sigma * math.sqrt((1.0 - math.exp(-2.0 * theta * horizon_s)) / (2.0 * theta))
+
+
 def live_hurst(horizon_s: float, hurst: float, fitted_to_s: float | None = None) -> float:
-    """Clamp H, then blend back toward 0.5 beyond ``fitted_to_s``."""
+    """Clamp H to [0.05, 0.50], then blend toward 0.5 beyond ``fitted_to_s``."""
     h = min(max(float(hurst), HURST_MIN), HURST_MAX)
     if fitted_to_s is None or horizon_s <= fitted_to_s:
         return h
@@ -136,17 +154,15 @@ def live_spread(
     hurst: float,
     fitted_to_s: float | None = None,
 ) -> float:
-    """``sigma * T^H`` inside the fitted window (forecast.py contract)."""
-    if horizon_s <= 0.0 or sigma <= 0.0:
-        raise ValueError("sigma and horizon_s must be positive")
-    return sigma * (horizon_s ** live_hurst(horizon_s, hurst, fitted_to_s))
+    """Pinned live quote: ``spread(sigma, T, clamp(H))``."""
+    return spread(sigma, horizon_s, live_hurst(horizon_s, hurst, fitted_to_s))
 
 
-def live_sigma_eff(spread: float, horizon_s: float) -> float:
-    """``sigma_eff = spread / sqrt(T)`` as used by live ``hit_prob``."""
+def live_sigma_eff(spread_value: float, horizon_s: float) -> float:
+    """``sigma_eff = spread / sqrt(T)``."""
     if horizon_s <= 0.0:
         raise ValueError("horizon_s must be positive")
-    return spread / math.sqrt(horizon_s)
+    return spread_value / math.sqrt(horizon_s)
 
 
 def live_hit_prob(
@@ -156,24 +172,18 @@ def live_hit_prob(
     hurst: float = LIVE_H,
     fitted_to_s: float | None = None,
 ) -> float:
-    """BM reflection with ``sigma_eff = spread / sqrt(T)``."""
-    spread = live_spread(sigma, horizon_s, hurst, fitted_to_s)
-    sigma_eff = live_sigma_eff(spread, horizon_s)
-    return touch_p_from_k(distance / (sigma_eff * math.sqrt(horizon_s)))
+    """Mu = 0 reflection on the pinned live spread."""
+    return hit_prob(distance, sigma, horizon_s, live_hurst(horizon_s, hurst, fitted_to_s))
 
 
 def saturating_spread(horizon_s: float, theta: float, sigma: float = 1.0) -> float:
-    """OU integrated-variance reach. Saturates at ``sigma / sqrt(2θ)``."""
-    if horizon_s <= 0.0 or sigma <= 0.0:
-        raise ValueError("sigma and horizon_s must be positive")
-    if theta <= 0.0:
-        return sigma * math.sqrt(horizon_s)
-    return sigma * math.sqrt((1.0 - math.exp(-2.0 * theta * horizon_s)) / (2.0 * theta))
+    """Alias of ``ou_rms`` — saturating first-passage reach."""
+    return ou_rms(horizon_s, theta, sigma)
 
 
 def saturating_hit_prob(distance: float, horizon_s: float, *, theta: float, sigma: float = 1.0) -> float:
-    """First-passage stand-in: reflection on the saturating tape spread."""
-    return touch_p_from_k(distance / saturating_spread(horizon_s, theta, sigma))
+    """Reflection on the OU RMS stand-in."""
+    return touch_p_from_k(distance / ou_rms(horizon_s, theta, sigma))
 
 
 def live_implied_distance(horizon_s: float, p_pred: float, *, sigma_err: float = 1.0) -> float:
@@ -186,7 +196,7 @@ def live_implied_distance(horizon_s: float, p_pred: float, *, sigma_err: float =
         raise ValueError("horizon_s must be positive")
     if sigma_err <= 0.0:
         raise ValueError("sigma_err must be positive")
-    return k_from_predicted_p(p_pred) * sigma_err * (horizon_s**LIVE_H)
+    return k_from_predicted_p(p_pred) * spread(sigma_err, horizon_s, LIVE_H)
 
 
 def _ou_reach_factor(theta_T: float) -> float:
@@ -245,11 +255,7 @@ def predicted_to_actual_ratio(
     if saturating:
         p_actual = saturating_hit_prob(distance, horizon_s, theta=theta)
     else:
-        # Hypothesized truth is unclamped: the live floor is a model error,
-        # not a property of the tape. ``p = 2Φ(-d / (σ T^H))``.
-        if hurst <= 0.0:
-            raise ValueError("hurst must be positive")
-        p_actual = touch_p_from_k(distance / (horizon_s**hurst))
+        p_actual = hit_prob(distance, 1.0, horizon_s, hurst)
     return p_actual / p_pred
 
 
