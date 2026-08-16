@@ -3,12 +3,25 @@
 The live policy takes argmax EV over ~180 quoted cells that share one
 price path. Closed-form μ_N (expected max of N i.i.d. N(0,1) errors)
 overstates that bias: tape-shared residuals do not give 180 independent
-chances to get lucky. This module measures the hole on the cells we
-actually pick, keyed by selection-rank band.
+chances to get lucky. This module is the measurement hook for the cells
+we actually pick, keyed by selection-rank band.
+
+It is not wired to a live grading stream on this remote (main is an
+Aug 11 skeleton; GridBoard windows are local in-memory only). Until a
+caller supplies real windows, n_windows=0, too_small=True, not measured.
+Do not invent a live s_hat. Baseline not beaten: full window 1365 /
+12.2% / −0.2775 vs −0.2712 (indistinguishable). Drop −0.4948. Full
+windows only.
 
 Beta buckets use prior_weight=8, one-sided LCB z=1.6449, and lift caps
 MAX_LIFT_FACTOR=4, MAX_LIFT_ABSOLUTE=0.01. A cold rank-0 bucket returns
 the incoming p unchanged — it never manufactures edge. Decisions use LCB.
+
+too_small (n_windows < 50) GATES the live path. adjust_rank and
+apply_to_winner pass through incoming p (trusted=False) until
+observe_window has seen 50 windows that contain a rank-0 row. Cell-count
+warmth (n_cells >= 20) is not enough. observe_ranked alone does not
+increment the window count.
 
 Policy.choose (not implemented here) should run the would-be winner
 through ``adjust_rank(rank=0)`` and sit if LCB fails MIN_EDGE=0.05 or
@@ -45,7 +58,8 @@ RANK_BANDS: tuple[tuple[int, int | None, str], ...] = (
 POLICY_NOTE = (
     "Policy.choose should run the would-be winner through "
     "adjust_rank(rank=0) and sit if LCB fails MIN_EDGE=0.05 or "
-    "MIN_P_LCB=0.02. RankCalibrator does not implement Policy."
+    "MIN_P_LCB=0.02. RankCalibrator does not implement Policy. "
+    "too_small (n_windows < 50) sits: incoming p unchanged, trusted=False."
 )
 
 
@@ -104,11 +118,10 @@ def mu_N(n: int) -> float:
 
 
 def closed_form_displayed(p_true: float, n: int, sigma: float) -> float:
-    """I.i.d. additive-Gaussian displayed probability.
+    """I.i.d. additive-Gaussian displayed probability. Comparison only.
 
-    ``p_true + σ μ_N``. Comparison only — this is the mapping that turns
-    a true 0.35 into a displayed 0.60 when σ μ_N = 0.25. Do not use it
-    to correct live quotes.
+    ``p_true + σ μ_N``. SYNTHETIC closed-form mapping, not a tape
+    measurement and not the live correction.
     """
     return _clip01(float(p_true) + float(sigma) * mu_N(n))
 
@@ -146,7 +159,9 @@ def window_s(window: Any) -> float | None:
 
     s = mean(p_model − 1{touched}) on rank-0 cells of a single shared
     price path. Positive s means the chosen cell's model probability
-    overstated the tape.
+    overstated the tape. The block-bootstrap s_hat is the mean of these
+    per-window values. Not a live measurement unless the caller fed
+    real windows.
     """
     residual = 0.0
     n = 0
@@ -181,6 +196,8 @@ class RankAdjustment:
     n: int
     key: str
     trusted: bool
+    n_windows: int = 0
+    too_small: bool = True
 
 
 @dataclass
@@ -199,11 +216,18 @@ class RankCalibrator:
     max_lift_factor: float = MAX_LIFT_FACTOR
     max_lift_absolute: float = MAX_LIFT_ABSOLUTE
     min_trusted_n: int = MIN_TRUSTED_N
+    min_bootstrap_windows: int = MIN_BOOTSTRAP_WINDOWS
+    n_windows: int = field(default=0, init=False)
     _buckets: dict[str, _Bucket] = field(default_factory=dict, init=False, repr=False)
+    _window_s: list[float] = field(default_factory=list, init=False, repr=False)
     last_now: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._buckets = {key: _Bucket() for _lo, _hi, key in RANK_BANDS}
+
+    @property
+    def too_small(self) -> bool:
+        return self.n_windows < self.min_bootstrap_windows
 
     def _bucket(self, rank: int) -> _Bucket:
         return self._buckets[rank_band_key(rank)]
@@ -216,7 +240,10 @@ class RankCalibrator:
         *,
         now: Any = None,
     ) -> None:
-        """Record one quoted cell at its selection rank (0 = chosen)."""
+        """Record one quoted cell at its selection rank (0 = chosen).
+
+        Does not increment ``n_windows``. A cell flood cannot open the gate.
+        """
         if now is not None:
             self.last_now = now
         bucket = self._bucket(int(rank))
@@ -225,25 +252,50 @@ class RankCalibrator:
         bucket.sum_p += _clip01(float(p_model))
 
     def observe_window(self, rows: Iterable[Any]) -> None:
-        """Record every cell of one shared-tape quoted window."""
-        for item in _iter_rows(rows):
+        """Ingest one shared-tape quoted window.
+
+        Increments ``n_windows`` once if the window has a rank-0 row.
+        Caller supplies records ``{p_model|p, rank, touched|hit}``.
+        """
+        materialized = list(_iter_rows(rows))
+        residual = window_s(materialized)
+        for item in materialized:
             p_model, rank, touched, now = _as_row(item)
             self.observe_ranked(p_model, rank, touched, now=now)
+        if residual is not None:
+            self.n_windows += 1
+            self._window_s.append(residual)
 
     def _cap_up(self, p_model: float, raw: float) -> float:
         """Never lift past the factor / absolute caps. Haircuts pass through."""
         ceiling = min(p_model * self.max_lift_factor, p_model + self.max_lift_absolute, 1.0)
         return _clip01(min(raw, ceiling))
 
+    def _pass_through(self, p: float, n: int, key: str) -> RankAdjustment:
+        return RankAdjustment(
+            p_model=p,
+            p_cal=p,
+            p_lcb=p,
+            n=n,
+            key=key,
+            trusted=False,
+            n_windows=self.n_windows,
+            too_small=self.too_small,
+        )
+
     def adjust_rank(self, p_model: float, rank: int) -> RankAdjustment:
-        """Shrink ``p_model`` by the rank-band posterior. Decisions use LCB."""
+        """Rank-band posterior, or sit if the window sample is too small.
+
+        too_small (n_windows < 50) gates the live path: incoming p
+        unchanged, trusted=False. Cell-count warmth does not override.
+        Decisions use LCB. Closed-form μ_N is never applied.
+        """
         p = _clip01(float(p_model))
         key = rank_band_key(int(rank))
         bucket = self._buckets[key]
         n = bucket.n
-        if n < self.min_trusted_n:
-            # Cold: incoming p unchanged. Never mint a lift from thin n.
-            return RankAdjustment(p_model=p, p_cal=p, p_lcb=p, n=n, key=key, trusted=False)
+        if self.too_small or n < self.min_trusted_n:
+            return self._pass_through(p, n, key)
 
         p_bar = bucket.sum_p / n
         p_bar = min(max(p_bar, 1e-12), 1.0 - 1e-12)
@@ -260,45 +312,57 @@ class RankCalibrator:
             n=n,
             key=key,
             trusted=True,
+            n_windows=self.n_windows,
+            too_small=False,
         )
 
     def block_bootstrap_s(
         self,
-        windows: Sequence[Any],
+        windows: Sequence[Any] | None = None,
         *,
         n_boot: int = 400,
         rng: Any = None,
     ) -> dict[str, Any]:
         """Block-bootstrap the rank-0 residual s across quoted windows.
 
-        s is mean(p_model − 1{touched}) on the chosen cell of each window.
-        Windows are the resampling atoms because cells on one tape are
-        dependent. ``too_small`` is True when n_windows < 50: the interval
-        is forced to include 0 so nobody claims a significant curse.
+        s is mean(p_model − 1{touched}) on rank-0 of each window, then the
+        mean of those window values. Resamples windows, not cells.
+        ``too_small`` is True when n_windows < 50. That flag gates
+        adjust_rank / apply_to_winner; it is not a CI-only hint.
+
+        With no caller windows and no ingested windows: n_windows=0,
+        too_small, not measured. Do not invent a live s_hat.
         """
+        if windows is None:
+            if not self._window_s:
+                return _unmeasured(n_boot)
+            return _bootstrap_from_stats(list(self._window_s), n_boot=n_boot, rng=rng)
         return block_bootstrap_s(windows, n_boot=n_boot, rng=rng)
 
 
-def block_bootstrap_s(
-    windows: Sequence[Any],
+def _unmeasured(n_boot: int) -> dict[str, Any]:
+    return {
+        "s_hat": None,
+        "s_lo": None,
+        "s_hi": None,
+        "n_windows": 0,
+        "n_boot": int(n_boot),
+        "too_small": True,
+        "measured": False,
+    }
+
+
+def _bootstrap_from_stats(
+    stats: Sequence[float],
     *,
-    n_boot: int = 400,
-    rng: Any = None,
+    n_boot: int,
+    rng: Any,
 ) -> dict[str, Any]:
-    """See ``RankCalibrator.block_bootstrap_s``."""
-    stats = [s for window in windows if (s := window_s(window)) is not None]
     n_windows = len(stats)
     n_boot = int(n_boot)
     too_small = n_windows < MIN_BOOTSTRAP_WINDOWS
     if n_windows == 0:
-        return {
-            "s_hat": 0.0,
-            "s_lo": 0.0,
-            "s_hi": 0.0,
-            "n_windows": 0,
-            "n_boot": n_boot,
-            "too_small": True,
-        }
+        return _unmeasured(n_boot)
     s_hat = _mean(stats)
     rng = random.Random(0) if rng is None else rng
     boots: list[float] = []
@@ -311,10 +375,6 @@ def block_bootstrap_s(
         hi = boots[int(0.975 * (len(boots) - 1))]
     else:
         lo = hi = s_hat
-    if too_small:
-        # Refuse significance on tiny n: a pretty interval is not a proof.
-        lo = min(lo, 0.0)
-        hi = max(hi, 0.0)
     return {
         "s_hat": s_hat,
         "s_lo": lo,
@@ -322,7 +382,19 @@ def block_bootstrap_s(
         "n_windows": n_windows,
         "n_boot": n_boot,
         "too_small": too_small,
+        "measured": not too_small,
     }
+
+
+def block_bootstrap_s(
+    windows: Sequence[Any],
+    *,
+    n_boot: int = 400,
+    rng: Any = None,
+) -> dict[str, Any]:
+    """See ``RankCalibrator.block_bootstrap_s``."""
+    stats = [s for window in windows if (s := window_s(window)) is not None]
+    return _bootstrap_from_stats(stats, n_boot=n_boot, rng=rng)
 
 
 def apply_to_winner(
@@ -337,13 +409,13 @@ def apply_to_winner(
     MIN_P_LCB=0.02. This helper applies that rank-0 pass; it does not
     implement Policy.
 
-    A cold rank-0 bucket leaves ``(p_cal, p_lcb)`` unchanged. A trusted
-    bucket may haircut. The decision LCB is never lifted (good news is
-    treated as a bug until the tape earns it).
+    too_small or a cold rank-0 bucket leaves ``(p_cal, p_lcb)`` unchanged
+    (sit / pass-through). A trusted bucket may haircut. The decision LCB
+    is never lifted. Closed-form μ_N is never applied.
     """
     incoming_cal = _clip01(float(p_cal))
     incoming_lcb = _clip01(float(p_lcb))
     adj = rank_calibrator.adjust_rank(incoming_cal, 0)
-    if not adj.trusted:
+    if not adj.trusted or adj.too_small:
         return incoming_cal, incoming_lcb
     return adj.p_cal, min(incoming_lcb, adj.p_lcb)
