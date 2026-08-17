@@ -47,6 +47,14 @@ PRIVY_CLIENT = os.environ.get("EUPHORIA_PRIVY_CLIENT", "react-auth:2.13.4")
 TOKEN_STORE = Path(
     os.environ.get("EUPHORIA_TOKEN_STORE", str(Path.home() / ".euphoria" / "tokens.json"))
 )
+# Extension / env cookie session (mode 0600). Separate from the Privy refresh bundle.
+SESSION_STORE = Path(
+    os.environ.get("EUPHORIA_SESSION_STORE", str(Path.home() / ".euphoria" / "session.json"))
+)
+
+# --- Operator control room (localhost only) --------------------------------
+CONTROL_HOST = "127.0.0.1"
+CONTROL_PORT = int(os.environ.get("EUPHORIA_CONTROL_PORT", "8765"))
 
 # --- Proxy (geo-block bypass) ---------------------------------------------
 PROXY_URL = os.environ.get("EUPHORIA_PROXY", "") or None
@@ -69,6 +77,57 @@ PRICE_DECIMALS = 8     # startPrice / priceInterval
 
 # --- Oracle ----------------------------------------------------------------
 REDSTONE_URL = "https://api.redstone.finance/prices"
+
+# --- Learned calibration ---------------------------------------------------
+# Beta-posterior touch-probability buckets, persisted between runs.
+CALIBRATION_STORE = Path(
+    os.environ.get("EUPHORIA_CALIBRATION_STORE", str(Path.home() / ".euphoria" / "calibration.json"))
+)
+# Paper bankroll the policy sizes against until the API hands us a real balance.
+BANKROLL_START = float(os.environ.get("EUPHORIA_BANKROLL_START", "100"))
+# Equity curve + settled-tap ledger, so a restart does not erase the track record.
+# Sigma anchored to the house quote grid. DEFAULT OFF: measured harmful.
+# Matched 50-minute windows, identical code, one setting apart --
+#   anchor ON : 1218 trades, 15.5% hit, -0.7358 per unit
+#   anchor OFF:  772 trades, 64.0% hit, -0.1066 per unit
+# A 0.629 gap at 9.3 sigma. Off is also the first result in this project to
+# beat picking at random (-0.18). The anchor ran sigma ~3.4x above the tick
+# fit, which made far cells look reachable, and the book took them.
+USE_HOUSE_ANCHOR = os.environ.get("EUPHORIA_HOUSE_ANCHOR", "0") not in ("0", "false", "no")
+REACHABILITY_STORE = Path(
+    os.environ.get("EUPHORIA_REACHABILITY_STORE",
+                   str(Path.home() / ".euphoria" / "reachability.json"))
+)
+CELL_EDGE_STORE = Path(
+    os.environ.get("EUPHORIA_CELL_EDGE_STORE",
+                   str(Path.home() / ".euphoria" / "cell_edge.json"))
+)
+BANKROLL_STORE = Path(
+    os.environ.get("EUPHORIA_BANKROLL_STORE", str(Path.home() / ".euphoria" / "bankroll.json"))
+)
+# Learned grid-walking behaviour: dwell per row, break direction, hour-of-day.
+TRAVERSAL_STORE = Path(
+    os.environ.get("EUPHORIA_TRAVERSAL_STORE", str(Path.home() / ".euphoria" / "traversal.json"))
+)
+# Settled-trade ledger with attribution, plus the real balance history.
+PNL_STORE = Path(
+    os.environ.get("EUPHORIA_PNL_STORE", str(Path.home() / ".euphoria" / "pnl.json"))
+)
+# The operator's own real taps and settlements, and what our surface said about
+# each. A record of real bets -- written 0600, never logged.
+PLAYER_STORE = Path(
+    os.environ.get("EUPHORIA_PLAYER_STORE", str(Path.home() / ".euphoria" / "player.json"))
+)
+# Calibration learned from real money only, kept apart from the free labels.
+PLAYER_CALIBRATION_STORE = Path(
+    os.environ.get("EUPHORIA_PLAYER_CALIBRATION_STORE",
+                   str(Path.home() / ".euphoria" / "player-calibration.json"))
+)
+# Minimum expected value, on the lower confidence bound, before a cell is tapped.
+MIN_EDGE = float(os.environ.get("EUPHORIA_MIN_EDGE", "0.05"))
+# Fraction of the Kelly stake actually used. Full Kelly on an estimated
+# probability is how a real edge still ends in ruin.
+KELLY_FRACTION = float(os.environ.get("EUPHORIA_KELLY_FRACTION", "0.25"))
 
 # --- Risk limits (auto-trader safety rails) --------------------------------
 MAX_TRADE_USDM = float(os.environ.get("EUPHORIA_MAX_TRADE_USDM", "10"))

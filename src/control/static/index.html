@@ -1,0 +1,2328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Euphoria control</title>
+  <link rel="preconnect" href="https://fonts.bunny.net" />
+  <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700" rel="stylesheet" />
+  <style>
+    :root {
+      --ebo-bg: url("/bg/terrace.png");
+      --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      --bg: #0d0f12;
+      --panel: #161a20;
+      --line: rgba(255,255,255,0.14);
+      --text: #f5f5f7;
+      --muted: #a1a1a6;
+      --dim: #6e6e73;
+      --up: #30d158;
+      --down: #ff453a;
+      --flat: #8e8e93;
+      --warn: #ffd60a;
+      --accent: #0a84ff;
+      --fill: rgba(255,255,255,0.10);
+      --fill-hover: rgba(255,255,255,0.16);
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; min-height: 100%; color: var(--text);
+      font: 400 14px/1.45 var(--sans);
+      letter-spacing: -0.011em;
+      font-feature-settings: "ss01", "cv11", "tnum";
+      -webkit-font-smoothing: antialiased;
+    }
+    body {
+      background:
+        linear-gradient(180deg, rgba(8,10,14,0.28), rgba(8,10,14,0.55)),
+        var(--ebo-bg) center / cover no-repeat fixed,
+        #0b0d12;
+    }
+    header {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 14px 18px;
+      position: relative; z-index: 50;
+      isolation: isolate;
+      pointer-events: auto;
+    }
+    .ebo-agent {
+      display: flex; align-items: center; gap: 12px;
+      z-index: 40; position: relative; flex: 0 0 auto;
+    }
+    .ebo-agent-face {
+      width: 80px; height: 80px; border-radius: 50%; overflow: hidden;
+      background: #111; flex: none; position: relative;
+      box-shadow: 0 0 0 2px rgba(255,255,255,.12);
+    }
+    .ebo-agent-face img, .ebo-agent-face canvas {
+      position: absolute; inset: 0; width: 80px; height: 80px;
+      object-fit: cover; display: block;
+      transition: opacity .22s var(--ease);
+    }
+    .ebo-agent.orb img { opacity: 0; }
+    .ebo-agent.face canvas { opacity: 0; }
+    .ebo-agent-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .ebo-agent-meta strong {
+      font-size: 13px; font-weight: 600; letter-spacing: .01em; color: var(--text);
+    }
+    #eboOrbCap { font-size: 12px; color: var(--muted); line-height: 1.3; }
+    .ebo-agent[data-state="listening"] .ebo-agent-face,
+    .ebo-agent[data-state="connecting"] .ebo-agent-face,
+    .ebo-agent[data-state="breathing"] .ebo-agent-face {
+      box-shadow: 0 0 0 2px var(--muted);
+    }
+    .ebo-agent[data-state="solving"] .ebo-agent-face,
+    .ebo-agent[data-state="working"] .ebo-agent-face,
+    .ebo-agent[data-state="searching"] .ebo-agent-face {
+      box-shadow: 0 0 0 2px var(--lime, var(--hud));
+    }
+    .ebo-agent[data-state="shaping"] .ebo-agent-face {
+      box-shadow: 0 0 0 2px var(--down);
+    }
+    .ebo-agent[data-state="weaving"] .ebo-agent-face,
+    .ebo-agent[data-state="composing"] .ebo-agent-face {
+      box-shadow: 0 0 0 2px var(--hud);
+    }
+    h1 { font-size: 13px; font-weight: 600; letter-spacing: .08em; margin: 0; text-transform: uppercase; color: var(--muted); }
+    .badge {
+      font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+      padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line);
+      background: var(--fill); color: var(--muted);
+      transition: color .22s var(--ease), background .22s var(--ease), border-color .22s var(--ease);
+    }
+    .badge.dry { color: var(--warn); border-color: rgba(255,214,10,0.28); background: rgba(255,214,10,0.10); }
+    .badge.live { color: var(--down); border-color: rgba(255,69,58,0.32); background: rgba(255,69,58,0.12); }
+    .badge.on { color: var(--up); border-color: rgba(48,209,88,0.32); background: rgba(48,209,88,0.12); }
+    .badge.off { color: var(--muted); }
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px; position: relative; z-index: 1; }
+    @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+    .card { position: relative; z-index: 1; overflow: hidden; background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.008)); border: 1px solid rgba(255,255,255,0.22); border-radius: 22px; padding: 14px 16px; box-shadow: 0 22px 48px rgba(0,0,0,0.36), 0 4px 12px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.22); }
+    .ebo-glass-back { position: absolute; inset: 0; z-index: 0; pointer-events: none; border-radius: inherit; isolation: isolate; display: block; width: 100%; height: 100%; }
+    .ebo-glass-shine {
+      position: absolute; inset: 0; z-index: 0; pointer-events: none; border-radius: inherit;
+      background:
+        linear-gradient(165deg, rgba(255,255,255,0.07) 0%, transparent 16%),
+        linear-gradient(180deg, transparent 58%, rgba(0,0,0,0.22) 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.28),
+        inset 0 -1px 0 rgba(255,255,255,0.08),
+        inset 0 -20px 32px rgba(0,0,0,0.18),
+        inset 12px 0 18px rgba(255,255,255,0.04),
+        inset -12px 0 18px rgba(0,0,0,0.08),
+        inset 0 0 0 1px rgba(255,255,255,0.16);
+    }
+    .ebo-glass-front { position: relative; z-index: 1; isolation: isolate; transform: translateZ(0); filter: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+    html.ebo-gl-live .ebo-glass-front { text-shadow: 0 1px 0 rgba(0,0,0,0.72); }
+    #ebo-glass-gl {
+      position: fixed; inset: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 0; display: block;
+    }
+    html.ebo-gl-live .card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.20);
+      box-shadow: 0 22px 48px rgba(0,0,0,0.36), 0 4px 12px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.22);
+      overflow: hidden;
+    }
+    html.ebo-gl-live .ebo-glass-shine { display: none; background: none; box-shadow: none; }
+    html.ebo-gl-live .ebo-glass-back {
+      backdrop-filter: none; -webkit-backdrop-filter: none; background: transparent;
+    }
+    html.ebo-gl-live .think-bias,
+    html.ebo-gl-live .reason,
+    html.ebo-gl-live .ticks .px,
+    html.ebo-gl-live .card h2,
+    html.ebo-gl-live .meta,
+    html.ebo-gl-live #hint,
+    html.ebo-gl-live #grade,
+    html.ebo-gl-live #suggested,
+    html.ebo-gl-live #setup,
+    html.ebo-gl-live #teach,
+    html.ebo-gl-live #sitPill,
+    html.ebo-gl-live #callWhy,
+    html.ebo-gl-live #callReach,
+    html.ebo-gl-live #callStamp,
+    html.ebo-gl-live #quoteStrip,
+    html.ebo-gl-live #edgeLine {
+      width: fit-content;
+      max-width: 100%;
+      padding: 2px 8px;
+      margin-left: -8px;
+      border-radius: 8px;
+      background: rgba(8,10,14,0.46);
+      box-shadow: 0 0 18px rgba(8,10,14,0.28);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.55);
+    }
+    html.ebo-gl-live .ticks .px { padding: 1px 8px; }
+    html.ebo-gl-live .think-bias,
+    html.ebo-gl-live #conf {
+      background: rgba(8,10,14,0.72);
+      color: #f5f5f7;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.75);
+    }
+    html.ebo-gl-live .think-bias.up { color: var(--up); }
+    html.ebo-gl-live .think-bias.down { color: var(--down); }
+    html.ebo-gl-live .think-bias.flat { color: #f5f5f7; }
+    .card h2 { margin: 0 0 12px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button {
+      appearance: none;
+      background: var(--fill); color: var(--text); border: 1px solid var(--line);
+      border-radius: 980px; padding: 7px 14px; cursor: pointer;
+      font: 600 13px/1.1 var(--sans); letter-spacing: -0.01em;
+      transition: background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease), box-shadow .18s var(--ease);
+    }
+    button:hover { background: var(--fill-hover); }
+    button:active { background: var(--fill-hover); }
+    button.active {
+      background: rgba(48,209,88,0.16); border-color: rgba(48,209,88,0.34); color: var(--up);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+    }
+    button.danger.active {
+      background: rgba(255,69,58,0.14); border-color: rgba(255,69,58,0.34); color: var(--down);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+    }
+    .ticks { display: flex; gap: 22px; font-variant-numeric: tabular-nums; }
+    .ticks .sym { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+    .ticks .px { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; }
+    .ticks .src { color: var(--dim); font-size: 11px; }
+    .think-bias { font-size: 32px; font-weight: 700; letter-spacing: -0.03em; text-transform: uppercase; }
+    .think-bias.up { color: var(--up); }
+    .think-bias.down { color: var(--down); }
+    .think-bias.flat { color: var(--flat); }
+    .reason { margin: 8px 0; color: var(--text); }
+    .bar { height: 4px; background: rgba(255,255,255,0.10); border-radius: 99px; overflow: hidden; margin: 10px 0 6px; }
+    .bar > span { display: block; height: 100%; background: var(--accent); transition: width .35s var(--ease); }
+    .meta { color: var(--muted); font-size: 12.5px; }
+    .err { color: var(--down); font-size: 12px; min-height: 1.2em; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--dim); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 11px; }
+    .full { grid-column: 1 / -1; }
+    .tf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .tf-chips span {
+      font-size: 11px; font-weight: 600; letter-spacing: .02em;
+      padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line);
+      color: var(--muted); background: var(--fill);
+    }
+    .tf-chips span.up { color: var(--up); border-color: #1c5c3a; }
+    .tf-chips span.down { color: var(--down); border-color: #5c1c1c; }
+    .tf-chips span.flat { color: var(--flat); }
+
+    #ethTape {
+      display: block; width: 100%; height: 92px; margin: 10px 0 4px;
+      border-radius: 12px;
+      background: rgba(8,10,14,0.28);
+    }
+    .window-ring {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: conic-gradient(var(--hud) var(--win, 0%), rgba(255,255,255,0.12) 0);
+      box-shadow: inset 0 0 0 4px rgba(8,10,14,0.55);
+      flex: 0 0 18px;
+    }
+    .think-bias { transition: text-shadow .28s var(--ease), opacity .28s var(--ease); }
+    .grade-dots { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 0; }
+    .grade-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .grade-dots i {
+      width: 8px; height: 8px; border-radius: 50%; display: block;
+      background: rgba(255,255,255,0.18);
+    }
+    .grade-dots i.hit { background: #30d158; }
+    .grade-dots i.miss { background: #ff453a; }
+    .grade-dots i.sit, .grade-dots i.stood-out { background: #8e8e93; }
+    .teach-strip {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      font-size: 11px; color: var(--muted); letter-spacing: 0.02em;
+    }
+    .teach-strip .teach-n { color: var(--hud); font-variant-numeric: tabular-nums; font-weight: 600; }
+    .teach-chip {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+      padding: 2px 8px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--hud); background: var(--fill);
+      max-width: 16em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .teach-chip.hit { color: var(--up); border-color: rgba(48,209,88,0.34); }
+    .teach-chip.miss { color: var(--down); border-color: rgba(255,69,58,0.34); }
+    .sit-pill {
+      display: inline-block; margin: 6px 0 0;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 2px 8px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--muted); background: var(--fill);
+    }
+    .sit-pill[hidden] { display: none !important; }
+    .call-card { margin: 10px 0 8px; }
+    .call-pins { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .call-pins .pin {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+      padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line);
+    }
+    .call-pins .pin.pink { color: #fea0db; border-color: rgba(254,160,219,0.45); background: rgba(254,160,219,0.10); }
+    .call-pins .pin.blue { color: var(--hud); border-color: color-mix(in srgb, var(--navy) 45%, transparent); background: color-mix(in srgb, var(--navy) 14%, transparent); }
+    .call-pins .pin.sit { color: var(--muted); }
+    .call-why { margin-top: 6px; font-size: 12px; color: var(--muted); }
+    .call-why b { color: var(--hud); font-weight: 600; }
+    .call-stamp { margin-top: 6px; font-size: 11px; font-weight: 600; color: var(--hud); }
+    .call-stamp.hit { color: var(--up); }
+    .call-stamp.miss { color: var(--down); }
+    .call-stamp.sit { color: var(--flat); }
+    .call-stamp[hidden] { display: none !important; }
+    .call-reach {
+      margin-top: 6px; font-size: 11px; font-variant-numeric: tabular-nums;
+      color: var(--muted); letter-spacing: 0.02em;
+    }
+    .call-reach[hidden] { display: none !important; }
+    .call-pins .pin.blue.weak { opacity: 0.42; }
+    .call-stamp.weak { color: var(--muted); font-weight: 600; }
+    #quoteStrip.quote-tiles {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch;
+    }
+    .quote-tile {
+      min-width: 72px;
+      font-size: 11px; font-variant-numeric: tabular-nums;
+      padding: 5px 8px; border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--fill);
+      color: var(--muted);
+    }
+    .quote-tile.pink {
+      color: #fea0db;
+      border-color: rgba(254,160,219,0.40);
+      background: rgba(254,160,219,0.08);
+    }
+    .quote-tile.blue {
+      color: var(--hud);
+      border-color: color-mix(in srgb, var(--navy) 45%, transparent);
+      background: color-mix(in srgb, var(--navy) 12%, transparent);
+    }
+    .quote-tile.blue.weak { opacity: 0.42; }
+    .quote-tile .q-mult { font-weight: 600; color: inherit; }
+    .quote-tile .q-p { display: block; margin-top: 2px; }
+    .quote-tile .q-ver {
+      display: block; margin-top: 1px; font-size: 10px;
+      letter-spacing: 0.04em;
+    }
+    html.ebo-gl-live #quoteStrip.quote-tiles {
+      background: transparent; box-shadow: none; padding: 0; margin-left: 0;
+    }
+    html.ebo-gl-live .quote-tile {
+      background: rgba(8,10,14,0.46);
+      box-shadow: 0 0 18px rgba(8,10,14,0.28);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+
+    .bg-picker { margin-left: auto; display: flex; align-items: center; gap: 6px; position: relative; z-index: 80; pointer-events: auto; }
+    .bg-menu {
+      position: fixed; top: 56px; right: 14px;
+      width: min(440px, calc(100vw - 24px));
+      max-height: min(40vh, 320px);
+      overflow: auto;
+      z-index: 90;
+      isolation: isolate;
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(22,26,32,0.92);
+      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: 0 22px 50px rgba(0,0,0,0.48);
+      pointer-events: auto;
+    }
+    .bg-menu[hidden] { display: none !important; }
+    .bg-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .bg-menu-head span { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    .bg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .bg-cell { position: relative; }
+    .bg-thumb {
+      width: 100%; height: 68px; padding: 0; border-radius: 10px;
+      overflow: hidden; border: 1px solid rgba(255,255,255,0.18);
+      background: #111; cursor: pointer; pointer-events: auto;
+    }
+    .bg-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+    .bg-thumb.active { box-shadow: 0 0 0 2px #f5f5f7; }
+    .bg-cell .star, .bg-cell .cyc {
+      position: absolute; top: 4px; z-index: 2;
+      width: 22px; height: 22px; padding: 0; border-radius: 999px;
+      font-size: 12px; line-height: 20px; text-align: center;
+      background: rgba(8,10,14,0.62); color: #f5f5f7; border: 1px solid rgba(255,255,255,0.18);
+    }
+    .bg-cell .star { left: 4px; }
+    .bg-cell .cyc { right: 28px; font-size: 10px; letter-spacing: 0; }
+    .bg-cell .bg-del {
+      position: absolute; top: 4px; right: 4px; z-index: 3;
+      width: 22px; height: 22px; padding: 0; border-radius: 999px;
+      font-size: 13px; line-height: 20px; text-align: center;
+      background: rgba(8,10,14,0.62); color: #f5f5f7; border: 1px solid rgba(255,255,255,0.18);
+      pointer-events: auto;
+    }
+    #bgAdd { padding: 4px 10px; font-size: 11px; pointer-events: auto; z-index: 2; }
+    .bg-cell .star.on { color: #ffd60a; border-color: rgba(255,214,10,0.4); }
+    .bg-cell .cyc.on { color: #30d158; border-color: rgba(48,209,88,0.4); }
+    .bg-cell .name {
+      display: block; margin-top: 4px; font-size: 10px; color: var(--muted);
+      letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    html {
+      --hud: #f5f5f7;
+      --neon: #30d158;
+      --lime: #c8ff4a;
+      --navy: #7eb6ff;
+      --shard: #d0d0d4;
+    }
+    html[data-bg="limeaero"],
+    html[data-bg="limehall"],
+    html[data-bg="icebar"],
+    html[data-bg="frostclub"],
+    html[data-bg="mercury"],
+    html[data-bg="softgrid"] {
+      --lime: #c8ff4a;
+      --hud: #c8ff4a;
+      --neon: #c8ff4a;
+      --navy: #1a2a14;
+      --shard: #e8ff9a;
+    }
+    html[data-bg="shardhud"],
+    html[data-bg="spirit"],
+    html[data-bg="crunch"],
+    html[data-bg="nightunnel"],
+    html[data-bg="wirehud"],
+    html[data-bg="aeroorb"],
+    html[data-bg="underpass"],
+    html[data-bg="overpass"],
+    html[data-bg="jersey"],
+    html[data-bg="towerdusk"],
+    html[data-bg="baggage"],
+    html[data-bg="bluedeck"],
+    html[data-bg="duskline"],
+    html[data-bg="visorcam"],
+    html[data-bg="visor2"],
+    html[data-bg="vaio2"],
+    html[data-bg="softcar"] {
+      --navy: #7eb6ff;
+      --hud: #9ecbff;
+      --neon: #7eb6ff;
+      --lime: #4a6a88;
+      --shard: #cfe4ff;
+    }
+    html[data-bg="kabuki"],
+    html[data-bg="grind"],
+    html[data-bg="viewcomic"],
+    html[data-bg="nightrace"],
+    html[data-bg="360den"],
+    html[data-bg="ravedisc"] {
+      --neon: #ff3b4a;
+      --hud: #ff5a6a;
+      --lime: #ff8aa0;
+      --navy: #2a0a12;
+      --shard: #ffd0d4;
+    }
+    .window-ring {
+      background: conic-gradient(var(--hud) var(--win, 0%), rgba(255,255,255,0.12) 0);
+    }
+    #surfaceMap, #equity, #reliability {
+      width: 100%; display: block; border-radius: 12px;
+      background: rgba(8,10,14,0.34); border: 1px solid rgba(255,255,255,0.10);
+      margin: 8px 0;
+    }
+    #surfaceMap { height: 300px; }
+    #equity, #reliability { height: 120px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 11px; color: var(--muted); }
+    .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+    #hazard, #byHour {
+      width: 100%; height: 140px; display: block; border-radius: 12px;
+      background: rgba(8,10,14,0.34); border: 1px solid rgba(255,255,255,0.10);
+      margin: 8px 0;
+    }
+    .tilt-banner {
+      margin: 0 16px 4px; padding: 12px 16px; border-radius: 14px;
+      display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap;
+      border: 1px solid rgba(255,214,10,0.42);
+      background: rgba(255,214,10,0.12);
+      position: relative; z-index: 40;
+    }
+    .tilt-banner.tilted {
+      border-color: rgba(255,69,58,0.5); background: rgba(255,69,58,0.14);
+    }
+    .tilt-head { font: 650 14px/1.2 var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--warn); }
+    .tilt-banner.tilted .tilt-head { color: var(--down); }
+    .tilt-why { font-size: 14px; color: var(--text); }
+    .tilt-nums { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .compare { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 8px; }
+    @media (max-width: 860px) { .compare { grid-template-columns: 1fr; } }
+    .cmp {
+      border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px;
+      background: rgba(255,255,255,0.03);
+    }
+    .cmp-h { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+    .cmp-v { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+    .cmp-s { font-size: 11.5px; color: var(--muted); }
+    .coil { margin-bottom: 12px; }
+    .coil-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .coil-state {
+      font: 650 13px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase;
+      padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line);
+      background: var(--fill); color: var(--muted);
+    }
+    .coil-state.loaded { color: var(--warn); border-color: rgba(255,214,10,0.42); background: rgba(255,214,10,0.14); }
+    .coil-state.expanding { color: var(--down); border-color: rgba(255,69,58,0.42); background: rgba(255,69,58,0.14); }
+    .coil-state.coiling { color: var(--accent); border-color: rgba(10,132,255,0.40); background: rgba(10,132,255,0.12); }
+    .coil-state.ready { box-shadow: 0 0 0 2px rgba(255,214,10,0.28); }
+    .coil-line { font-size: 15px; color: var(--text); }
+    .coil-meter {
+      height: 6px; border-radius: 99px; overflow: hidden; margin: 8px 0 5px;
+      background: rgba(255,255,255,0.10); border: 1px solid var(--line);
+    }
+    .coil-meter > i {
+      display: block; height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--warn));
+      transition: width .4s var(--ease);
+    }
+    .walk-now { font-size: 15px; margin-bottom: 6px; display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+    .walk-now b { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .walk-now .up { color: var(--up); }
+    .walk-now .down { color: var(--down); }
+    .walk-now .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+    .updown { display: flex; height: 10px; width: 190px; border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
+    .updown i { display: block; height: 100%; }
+    .updown i.u { background: var(--up); }
+    .updown i.d { background: var(--down); }
+    .learn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 860px) { .learn-grid { grid-template-columns: 1fr; } }
+    .sub { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+    td.win { color: var(--up); } td.loss { color: var(--down); } td.void { color: var(--dim); }
+    .badge.on, .ebo-pill.on, .ebo-pill {
+      color: var(--hud);
+      border-color: color-mix(in srgb, var(--neon) 40%, transparent);
+    }
+    .badge.on {
+      background: color-mix(in srgb, var(--neon) 14%, transparent);
+    }
+  </style>
+  <script>
+    try {
+      var id = localStorage.getItem("ebo-bg");
+      if (id && /^[a-z0-9][a-z0-9_-]*$/.test(id)) {
+        var src = "/bg/" + id + ".png";
+        try {
+          var custom = JSON.parse(localStorage.getItem("ebo-bg-custom") || "[]");
+          if (Array.isArray(custom)) {
+            for (var i = 0; i < custom.length; i++) {
+              if (custom[i] && custom[i].id === id && custom[i].src) { src = custom[i].src; break; }
+            }
+          }
+        } catch (e2) {}
+        document.documentElement.dataset.bg = id;
+        document.documentElement.style.setProperty("--ebo-bg", 'url("' + src + '")');
+      }
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <header>
+    <div id="eboAgent" class="ebo-agent face" data-state="connecting">
+      <div class="ebo-agent-face">
+        <img src="/money-man-avatar.png" alt="money man" width="80" height="80" />
+        <canvas id="eboOrb" width="80" height="80"></canvas>
+      </div>
+      <div class="ebo-agent-meta">
+        <strong>money man</strong>
+        <span id="eboOrbCap">Connecting…</span>
+      </div>
+    </div>
+    <h1>Euphoria control</h1>
+    <span id="dry" class="badge dry">dry-run</span>
+    <span id="run" class="badge off">stopped</span>
+    <span id="modeBadge" class="badge off">manual</span>
+    <span id="extBadge" class="badge off">tab offline</span>
+    <div class="bg-picker" id="bgPicker">
+      <button type="button" id="bgToggle">Backdrop</button>
+      <button type="button" id="bgCycle">Cycle</button>
+      <div class="bg-menu" id="bgMenu" hidden>
+        <div class="bg-menu-head">
+          <span>Walls</span>
+          <span id="bgCycleHint">all in cycle</span>
+          <button type="button" id="bgAdd">Add</button>
+          <input type="file" id="bgFile" accept="image/*" hidden>
+        </div>
+        <div class="bg-grid" id="bgTray"></div>
+      </div>
+    </div>
+  </header>
+  <div id="tiltBanner" class="tilt-banner" hidden>
+    <span id="tiltHead" class="tilt-head"></span>
+    <span id="tiltWhy" class="tilt-why"></span>
+    <span id="tiltNums" class="tilt-nums"></span>
+  </div>
+  <main>
+    <section class="card">
+      <h2>Operator</h2>
+      <div class="row">
+        <button id="btnStart" type="button">Start</button>
+        <button id="btnStop" type="button">Stop</button>
+        <button id="btnManual" type="button">Manual</button>
+        <button id="btnAuto" type="button">Auto</button>
+      </div>
+      <p class="meta" style="margin:10px 0 0">
+        Live indicator for a logged-in tab. Manual never submits — you tap.
+        After each 5s window it grades whether price tagged the named square.
+        Auto still will not live-submit unless <code>EUPHORIA_DRY_RUN=0</code>
+        and botSignature / deviceFingerprint / approvalPermit are present.
+      </p>
+      <p id="err" class="err"></p>
+    </section>
+    <section class="card">
+      <h2>Ticks</h2>
+      <div class="ticks">
+        <div>
+          <div class="sym">ETH</div>
+          <div id="ethPx" class="px">—</div>
+          <div id="ethSrc" class="src"></div>
+        </div>
+        <div>
+          <div class="sym">BTC</div>
+          <div id="btcPx" class="px">—</div>
+          <div id="btcSrc" class="src"></div>
+        </div>
+        <div id="windowRing" class="window-ring" title="5s window"></div>
+      </div>
+      <canvas id="ethTape" width="720" height="140"></canvas>
+      <div class="grade-row">
+        <div id="grades" class="grade-dots"></div>
+        <div id="teach" class="teach-strip"></div>
+      </div>
+      <p id="session" class="meta" style="margin:12px 0 0"></p>
+    </section>
+    <section class="card full">
+      <h2>Live indicator</h2>
+      <div id="bias" class="think-bias flat">flat</div>
+      <div id="hint" class="reason">waiting on ticks</div>
+      <span id="sitPill" class="sit-pill" hidden></span>
+      <div id="call" class="call-card">
+        <div id="callPins" class="call-pins"></div>
+        <div id="callWhy" class="call-why"></div>
+        <div id="callReach" class="call-reach" hidden></div>
+        <div id="callStamp" class="call-stamp" hidden></div>
+      </div>
+      <div id="quoteStrip" class="meta"></div>
+      <div id="edgeLine" class="meta"></div>
+      <div class="bar"><span id="confBar" style="width:0%"></span></div>
+      <div id="conf" class="meta">confidence 0.00</div>
+      <p id="reason" class="meta">—</p>
+      <div id="tfLine" class="meta">1m· 5m· 1h· 4h· D· M·</div>
+      <div id="tfChips" class="tf-chips"></div>
+      <div id="setup" class="meta">setup none</div>
+      <div id="suggested" class="meta">no trade</div>
+      <div id="grade" class="meta">last window —</div>
+    </section>
+    <section class="card full">
+      <h2>Grid surface</h2>
+      <div id="surfaceHead" class="meta">waiting on the quote grid…</div>
+      <canvas id="surfaceMap" width="1000" height="360"></canvas>
+      <div class="legend">
+        <span><i style="background:rgba(48,209,88,0.75)"></i>positive edge</span>
+        <span><i style="background:rgba(48,209,88,0.75);background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.45) 0 1px,transparent 1px 4px)"></i>positive, unproven</span>
+        <span><i style="background:rgba(120,132,150,0.45)"></i>negative — quoted, house wins</span>
+        <span><i style="background:rgba(110,168,254,0.06);border:1px dotted rgba(110,168,254,0.5)"></i>unreachable</span>
+        <span><i style="background:rgba(254,160,219,0.6)"></i>unquoted</span>
+        <span><i style="background:rgba(140,140,150,0.2);border:1px dashed rgba(160,160,170,0.6)"></i>no fit — feed down</span>
+        <span class="meta">colour = sign of edge · intensity = size of edge · hatch = too few observations to trust · row = price · column = seconds ahead</span>
+      </div>
+      <table id="surfaceTop">
+        <thead><tr><th>cell</th><th>when</th><th>p</th><th>lcb</th><th>mult</th><th>breakeven</th><th>edge</th><th>EV(lcb)</th><th>stake</th><th>n</th><th>verdict</th></tr></thead>
+        <tbody id="surfaceRows"></tbody>
+      </table>
+    </section>
+    <section class="card full">
+      <h2>Grid walk</h2>
+      <div id="coilBar" class="coil">
+        <div class="coil-head">
+          <span id="coilState" class="coil-state">—</span>
+          <span id="coilHead" class="coil-line">reading the tape…</span>
+        </div>
+        <div class="coil-meter"><i id="coilFill"></i></div>
+        <div id="coilWhy" class="meta"></div>
+      </div>
+      <div id="walkNow" class="walk-now">waiting on the tape…</div>
+      <div class="learn-grid">
+        <div>
+          <div class="sub">Chance the row breaks, by how long it has held</div>
+          <canvas id="hazard" width="480" height="140"></canvas>
+          <div id="hazardLine" class="meta">—</div>
+        </div>
+        <div>
+          <div class="sub">Activity by hour (local)</div>
+          <canvas id="byHour" width="480" height="140"></canvas>
+          <div id="hourLine" class="meta">—</div>
+        </div>
+      </div>
+    </section>
+    <section class="card full">
+      <h2>Learning</h2>
+      <div id="walletLine" class="meta">wallet —</div>
+      <div id="learnHead" class="meta">no observations yet</div>
+      <div class="learn-grid">
+        <div>
+          <div class="sub">Paper balance</div>
+          <canvas id="equity" width="480" height="120"></canvas>
+          <div id="bankLine" class="meta">—</div>
+        </div>
+        <div>
+          <div class="sub">Calibration — predicted vs actual</div>
+          <canvas id="reliability" width="480" height="120"></canvas>
+          <div id="brierLine" class="meta">—</div>
+        </div>
+      </div>
+      <table id="tapTable">
+        <thead><tr><th>time</th><th>cell</th><th>side</th><th>stake</th><th>mult</th><th>outcome</th><th>Δ</th></tr></thead>
+        <tbody id="tapRows"></tbody>
+      </table>
+    </section>
+    <section class="card full">
+      <h2>You vs the bot</h2>
+      <div class="compare" id="compareRow">
+        <div class="cmp"><div class="cmp-h">you (real)</div><div id="cmpYou" class="cmp-v">—</div><div id="cmpYouSub" class="cmp-s"></div></div>
+        <div class="cmp"><div class="cmp-h">policy (disciplined)</div><div id="cmpPolicy" class="cmp-v">—</div><div id="cmpPolicySub" class="cmp-s"></div></div>
+        <div class="cmp"><div class="cmp-h">shadow (exploratory)</div><div id="cmpShadow" class="cmp-v">—</div><div id="cmpShadowSub" class="cmp-s"></div></div>
+      </div>
+      <div id="shadowNote" class="meta"></div>
+      <table style="margin-top:10px"><thead><tr><th>time</th><th>cell</th><th>side</th><th>mult</th><th>stake</th><th>result</th><th>Δ</th></tr></thead>
+      <tbody id="shadowRows"></tbody></table>
+    </section>
+    <section class="card full">
+      <h2>Your trades</h2>
+      <div id="playerHead" class="walk-now">no real trades seen yet</div>
+      <div id="playerHealth" class="meta"></div>
+      <div class="sub" style="margin-top:10px">How our surface rated the cells you tapped</div>
+      <table><thead><tr><th>we said</th><th>n</th><th>your hit</th><th>staked</th><th>P&amp;L</th><th>per unit</th></tr></thead>
+      <tbody id="playerAgree"></tbody></table>
+      <table style="margin-top:10px"><thead><tr><th>time</th><th>cell</th><th>mult</th><th>we said</th><th>our p</th><th>stake</th><th>result</th><th>Δ</th></tr></thead>
+      <tbody id="playerRows"></tbody></table>
+    </section>
+    <section class="card full">
+      <h2>P&amp;L</h2>
+      <div id="pnlLive" class="walk-now">this run: —</div>
+      <div id="pnlHead" class="meta">no settled trades yet</div>
+      <div id="pnlReal" class="meta"></div>
+      <div id="pnlIntegrity" class="meta"></div>
+      <div class="learn-grid">
+        <div>
+          <div class="sub">By distance from price</div>
+          <table><thead><tr><th>cell</th><th>n</th><th>hit</th><th>staked</th><th>P&amp;L</th><th>per unit</th></tr></thead>
+          <tbody id="pnlDistance"></tbody></table>
+          <div class="sub" style="margin-top:10px">By multiplier</div>
+          <table><thead><tr><th>band</th><th>n</th><th>hit</th><th>staked</th><th>P&amp;L</th><th>per unit</th></tr></thead>
+          <tbody id="pnlMultiplier"></tbody></table>
+        </div>
+        <div>
+          <div class="sub">By horizon</div>
+          <table><thead><tr><th>when</th><th>n</th><th>hit</th><th>staked</th><th>P&amp;L</th><th>per unit</th></tr></thead>
+          <tbody id="pnlHorizon"></tbody></table>
+          <div class="sub" style="margin-top:10px">By day</div>
+          <table><thead><tr><th>day</th><th>n</th><th>hit</th><th>staked</th><th>P&amp;L</th><th>per unit</th></tr></thead>
+          <tbody id="pnlDay"></tbody></table>
+        </div>
+      </div>
+    </section>
+    <section class="card full">
+      <h2>Recent decisions</h2>
+      <table>
+        <thead><tr><th>time</th><th>action</th><th>bias</th><th>detail</th></tr></thead>
+        <tbody id="log"></tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    function fmtSrc(q) {
+      if (!q) return "";
+      const src = q.source || "";
+      if (src === "page" || src === "extension" || src === "dom" || src === "ws") return "from tab";
+      return src;
+    }
+    function fmtPx(q) {
+      if (!q || q.price == null) return "—";
+      return Number(q.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function fmtTime(ts) {
+      if (!ts) return "";
+      return new Date(ts * 1000).toLocaleTimeString();
+    }
+    function fmtSuggested(sug, hint, looking) {
+      if (!sug || sug === "no trade") return "no trade";
+      const line = hint || sug.hint || sug.label || sug.cell || "nearby square";
+      const cell = (sug.cell_x != null && sug.cell_y != null)
+        ? " · cell " + sug.cell_x + "," + sug.cell_y
+        : "";
+      const look = Array.isArray(looking) && looking.length
+        ? " · looking at " + looking.map((t) => (t.side || "") + (t.distance || "")).join(", ")
+        : "";
+      return line + cell + look;
+    }
+    async function post(path, body) {
+      const r = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      });
+      return r.json();
+    }
+
+    function drawTape(ethHist, tape, lastGrade) {
+      const c = $("ethTape");
+      if (!c || !c.getContext) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const cssW = c.clientWidth || 720;
+      const cssH = c.clientHeight || 92;
+      const w = Math.max(1, Math.round(cssW * dpr));
+      const h = Math.max(1, Math.round(cssH * dpr));
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+      const ctx = c.getContext("2d");
+      ctx.clearRect(0, 0, w, h);
+      const now = Date.now() / 1000;
+      const t0 = now - 60, t1 = now;
+      const pts = (Array.isArray(ethHist) ? ethHist : []).filter((p) => p && p.t >= t0 && p.p > 0);
+      if (tape && tape.last_closed) window.__eboLastClosed = tape.last_closed;
+      const ghost = (tape && tape.last_closed) || window.__eboLastClosed;
+      const hasLive = !!(tape && tape.lo != null && tape.hi != null);
+      const hasGhost = !!(ghost && ghost.lo != null && ghost.hi != null);
+      if (pts.length < 2 && !hasLive && !hasGhost) {
+        ctx.fillStyle = "rgba(245,245,247,0.35)";
+        ctx.font = (12 * dpr) + "px Inter, system-ui, sans-serif";
+        ctx.fillText("waiting on ETH tape", 16 * dpr, h / 2);
+        return;
+      }
+      const prices = pts.map((p) => p.p);
+      let dLo = prices.length ? Math.min.apply(null, prices) : Infinity;
+      let dHi = prices.length ? Math.max.apply(null, prices) : -Infinity;
+      if (tape && tape.lo != null && tape.hi != null) {
+        dLo = Math.min(dLo, tape.lo);
+        dHi = Math.max(dHi, tape.hi);
+      }
+      if (hasGhost) {
+        dLo = Math.min(dLo, ghost.lo);
+        dHi = Math.max(dHi, ghost.hi);
+      }
+      if (!isFinite(dLo) || !isFinite(dHi)) {
+        ctx.fillStyle = "rgba(245,245,247,0.35)";
+        ctx.font = (12 * dpr) + "px Inter, system-ui, sans-serif";
+        ctx.fillText("waiting on ETH tape", 16 * dpr, h / 2);
+        return;
+      }
+      if (dHi <= dLo) dHi = dLo + 1e-6;
+      const pad = (dHi - dLo) * 0.12;
+      dLo -= pad; dHi += pad;
+      const prev = window.__eboTapeY;
+      let lo = prev ? Math.min(prev.lo, dLo) : dLo;
+      let hi = prev ? Math.max(prev.hi, dHi) : dHi;
+      lo += (dLo - lo) * 0.06;
+      hi += (dHi - hi) * 0.06;
+      window.__eboTapeY = { lo: lo, hi: hi };
+      const span = Math.max(t1 - t0, 0.001);
+      const xOf = (t) => ((t - t0) / span) * (w - 16 * dpr) + 8 * dpr;
+      const yOf = (p) => h - 8 * dpr - ((p - lo) / (hi - lo)) * (h - 16 * dpr);
+      const winS = (tape && tape.window_s != null && isFinite(Number(tape.window_s))) ? Number(tape.window_s) : 5;
+      const remS = (tape && tape.window_remaining_s != null) ? Number(tape.window_remaining_s) : NaN;
+      const elapsed = (isFinite(remS) && isFinite(winS)) ? (winS - remS) : 0;
+      const winStart = now - elapsed;
+      const prevOpen = window.__eboTapeOpen;
+      if (prevOpen && isFinite(remS) && prevOpen.rem != null && remS > prevOpen.rem + 0.8) {
+        window.__eboLastClosed = {
+          lo: prevOpen.lo, hi: prevOpen.hi,
+          outcome: (lastGrade && lastGrade.outcome) || (prevOpen.tagged ? "hit" : (prevOpen.lo != null ? "miss" : "sit")),
+          t0: prevOpen.t0, t1: prevOpen.t1
+        };
+      }
+      window.__eboTapeOpen = {
+        lo: tape && tape.lo, hi: tape && tape.hi, tagged: tape && tape.tagged,
+        rem: remS, t0: winStart, t1: winStart + winS
+      };
+      const closed = (tape && tape.last_closed) || window.__eboLastClosed;
+      if (closed && closed.lo != null && closed.hi != null) {
+        const yTop = yOf(closed.hi), yBot = yOf(closed.lo);
+        const x0 = (closed.t0 != null) ? xOf(closed.t0) : xOf(winStart - winS);
+        const x1 = (closed.t1 != null) ? xOf(closed.t1) : xOf(winStart);
+        const left = Math.max(8 * dpr, Math.min(x0, x1));
+        const right = Math.min(w - 8 * dpr, Math.max(x0, x1));
+        const out = closed.outcome || "";
+        ctx.fillStyle = (out === "hit") ? "rgba(48,209,88,0.12)" : (out === "miss") ? "rgba(255,69,58,0.12)" : "rgba(142,142,147,0.10)";
+        ctx.fillRect(left, Math.min(yTop, yBot), Math.max(2 * dpr, right - left), Math.max(2 * dpr, Math.abs(yBot - yTop)));
+        const side = lastGrade && lastGrade.side;
+        const pointed = side === "up" ? "nearest-up" : side === "down" ? "nearest-down" : "square";
+        const tag = out === "hit" ? "tagged" : out === "miss" ? "missed" : "sit";
+        ctx.fillStyle = "rgba(245,245,247,0.50)";
+        ctx.font = (10 * dpr) + "px Inter, system-ui, sans-serif";
+        ctx.fillText("pointed " + pointed + " \u00b7 " + tag, left + 3 * dpr, Math.min(yTop, yBot) - 3 * dpr);
+      }
+      if (tape && tape.lo != null && tape.hi != null) {
+        const yTop = yOf(tape.hi), yBot = yOf(tape.lo);
+        const x0 = xOf(winStart);
+        const x1 = xOf(now);
+        const left = Math.max(8 * dpr, Math.min(x0, x1));
+        const right = Math.min(w - 8 * dpr, Math.max(x0, x1));
+        ctx.fillStyle = tape.tagged ? "rgba(48,209,88,0.22)" : "rgba(10,132,255,0.16)";
+        ctx.fillRect(left, Math.min(yTop, yBot), Math.max(2 * dpr, right - left), Math.max(2 * dpr, Math.abs(yBot - yTop)));
+      }
+      const cs = getComputedStyle(document.documentElement);
+      const hud = (cs.getPropertyValue("--hud") || "#f5f5f7").trim();
+      const neon = (cs.getPropertyValue("--neon") || "#30d158").trim();
+      const shard = (cs.getPropertyValue("--shard") || "#d0d0d4").trim();
+      if (pts.length >= 2) {
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          const x = xOf(p.t), y = yOf(p.p);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = hud;
+        ctx.lineWidth = 1.8 * dpr;
+        ctx.lineJoin = "round";
+        ctx.stroke();
+      }
+      if (tape && tape.lo != null && tape.hi != null) {
+        const yHi = yOf(tape.hi), yLo = yOf(tape.lo);
+        ctx.save();
+        ctx.globalAlpha = 0.28;
+        ctx.strokeStyle = shard;
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(8 * dpr, yHi); ctx.lineTo(w - 8 * dpr, yHi);
+        ctx.moveTo(8 * dpr, yLo); ctx.lineTo(w - 8 * dpr, yLo);
+        ctx.stroke();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = hud;
+        ctx.lineWidth = 1.5 * dpr;
+        const tick = 7 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(8 * dpr, yHi); ctx.lineTo(8 * dpr + tick, yHi);
+        ctx.moveTo(8 * dpr, yLo); ctx.lineTo(8 * dpr + tick, yLo);
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (tape && tape.window_remaining_s != null && isFinite(Number(tape.window_remaining_s))) {
+        const xGun = xOf(now - Number(tape.window_remaining_s));
+        ctx.save();
+        ctx.globalAlpha = 0.45;
+        ctx.strokeStyle = neon;
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(xGun, 4 * dpr);
+        ctx.lineTo(xGun, h - 4 * dpr);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    function gradeKind(g) {
+      if (!g) return "";
+      const out = String(g.outcome || g.result || "");
+      if (out === "hit" || g.hit === true || g.tagged === true) return "hit";
+      if (out === "miss" || g.miss === true) return "miss";
+      if (out === "sit" || out === "stood-out" || out === "stood_out") return "sit";
+      const line = String(g.line || "").toLowerCase();
+      if (line) {
+        if (line.indexOf("hit ") === 0 || line === "hit") return "hit";
+        if (line.indexOf("miss") >= 0) return "miss";
+        if (line.indexOf("stood") >= 0 || line.indexOf("aside") >= 0) return "sit";
+        return "sit";
+      }
+      return out ? "sit" : "";
+    }
+    function paintGrades(think) {
+      const host = $("grades");
+      const teach = $("teach");
+      const book = (think && think.grade) || {};
+      const rows = (Array.isArray(book.recent) ? book.recent : []).slice(-12);
+      if (host) {
+        host.innerHTML = rows.map((g) => {
+          const cls = gradeKind(g) || "sit";
+          return "<i class=\"" + cls + "\" title=\"" + (g.line || g.outcome || "") + "\"></i>";
+        }).join("");
+      }
+      if (!teach) return;
+      let hits = 0;
+      rows.forEach((g) => { if (gradeKind(g) === "hit") hits += 1; });
+      let sessionPct = null;
+      if (book.hit_rate != null && isFinite(Number(book.hit_rate))) {
+        sessionPct = Math.round(Number(book.hit_rate) * 100);
+      } else {
+        const named = rows.filter((g) => { const k = gradeKind(g); return k === "hit" || k === "miss"; });
+        const nh = named.filter((g) => gradeKind(g) === "hit").length;
+        if (named.length) sessionPct = Math.round(nh / named.length * 100);
+      }
+      if (!rows.length && sessionPct == null) {
+        teach.innerHTML = "<span>session</span> <span class=\"teach-n\">\u2014</span> <span>waiting</span>";
+        return;
+      }
+      const last = book.last || rows[rows.length - 1] || {};
+      const words = String(last.line || last.outcome || "").trim().split(/\s+/).filter(Boolean).slice(0, 4).join(" ");
+      const kind = gradeKind(last);
+      teach.innerHTML = "<span>session</span>" +
+        (rows.length ? " <span class=\"teach-n\">" + hits + "/" + rows.length + "</span>" : "") +
+        (sessionPct != null ? " <span class=\"teach-n\">" + sessionPct + "%</span>" : "") +
+        (words ? " <span class=\"teach-chip " + kind + "\">" + words + "</span>" : "");
+    }
+    function sitWord(t) {
+      const bag = [t.setup, t.lesson, t.sit_reason, t.action, t.why]
+        .filter(Boolean).join(" ").toLowerCase().replace(/_/g, "-");
+      if (bag.indexOf("late-pink") >= 0 || bag.indexOf("late pink") >= 0) return "late-pink";
+      if (bag.indexOf("compression") >= 0) return "compression";
+      if (bag.indexOf("chop") >= 0) return "chop";
+      if (bag.indexOf("quiet") >= 0) return "quiet";
+      if (bag.indexOf("fade") >= 0) return "fade";
+      return "";
+    }
+    function paintSit(t) {
+      const el = $("sitPill");
+      if (!el) return;
+      const sitting = t.stand_aside != null ? !!t.stand_aside : !t.pick;
+      const word = sitting ? sitWord(t) : "";
+      if (!sitting || !word) { el.hidden = true; el.textContent = ""; return; }
+      el.hidden = false;
+      el.textContent = word;
+    }
+    function pinLabel(c) {
+      if (typeof c === "string") {
+        const s = c.trim();
+        return (!s || s === "no trade") ? "" : s;
+      }
+      if (!c || typeof c !== "object") return "";
+      if (c.label) return c.label;
+      if (c.cell) return c.cell;
+      const side = c.side || "";
+      const d = c.distance != null ? String(c.distance) : "";
+      if (side && d) {
+        return (d.charAt(0) === "+" || d.charAt(0) === "-") ? side + d : side + "+" + d;
+      }
+      return (side + (d ? " " + d : "")).trim() || "square";
+    }
+    function pinMult(c) {
+      if (!c || typeof c !== "object" || c.multiplier == null) return "";
+      const m = Number(c.multiplier);
+      return isFinite(m) ? " · " + m.toFixed(2) + "x" : "";
+    }
+    function isLook(c) {
+      return !!(c && typeof c === "object" && (c.role == null || c.role === "look"));
+    }
+    function surfaceRowAt(surface, c) {
+      if (!c || typeof c !== "object" || !Array.isArray(surface)) return null;
+      if (c.cell_x == null || c.cell_y == null) return null;
+      const x = Number(c.cell_x), y = Number(c.cell_y);
+      for (let i = 0; i < surface.length; i++) {
+        const r = surface[i];
+        if (r && Number(r.cell_x) === x && Number(r.cell_y) === y) return r;
+      }
+      return null;
+    }
+    function pickIsWeak(row) {
+      if (!row) return false;
+      const v = String(row.verdict || "");
+      return !!v && v !== "tap";
+    }
+    function lookList(t) {
+      const raw = Array.isArray(t && t.candidates) ? t.candidates
+        : (Array.isArray(t && t.looking_at) ? t.looking_at : []);
+      return raw.filter(isLook);
+    }
+    function livePick(t) {
+      if (!t) return null;
+      const p = (t.pick && t.pick !== "no trade") ? t.pick
+        : ((t.suggested && t.suggested !== "no trade") ? t.suggested : null);
+      return (p && typeof p === "object") ? p : null;
+    }
+    function paintReach(t, rem) {
+      const reach = $("callReach");
+      if (!reach) return;
+      const rp = t && t.reach_prob;
+      if (rp == null || !isFinite(Number(rp))) {
+        if (!reach.hidden) { reach.hidden = true; reach.textContent = ""; }
+        return;
+      }
+      const left = (rem != null && isFinite(Number(rem)))
+        ? Math.max(0, Number(rem)).toFixed(1).replace(/\.0$/, "") : "—";
+      const line = Number(rp).toFixed(2) + " to tag in " + left + "s";
+      reach.hidden = false;
+      if (reach.textContent !== line) reach.textContent = line;
+    }
+    function paintCall(t) {
+      const pins = $("callPins"), why = $("callWhy"), stamp = $("callStamp");
+      if (!pins || !why || !stamp) return;
+      const rem = t.tape && t.tape.window_remaining_s != null ? Number(t.tape.window_remaining_s) : NaN;
+      const last = (t.grade && t.grade.last) || null;
+      const sitting = t.stand_aside != null ? !!t.stand_aside : !t.pick;
+      const rawCands = Array.isArray(t.candidates) ? t.candidates
+        : (Array.isArray(t.looking_at) ? t.looking_at : []);
+      const rawPick = (t.pick && t.pick !== "no trade") ? t.pick
+        : ((t.suggested && t.suggested !== "no trade") ? t.suggested : null);
+      const live = {
+        candidates: rawCands,
+        pick: rawPick,
+        alignment: t.alignment || "",
+        tf_lean: t.tf_lean || "",
+        lesson: t.lesson || "",
+        stand_aside: sitting
+      };
+      const prev = window.__eboCall || {};
+      const remJumped = prev.rem != null && isFinite(rem) && rem > prev.rem + 0.8;
+      const remDead = isFinite(rem) && rem <= 0.12;
+      if (remJumped || remDead) {
+        window.__eboFrozen = prev.live || window.__eboFrozen || live;
+        window.__eboCallStamp = last;
+      } else if (isFinite(rem) && rem > 0.12) {
+        window.__eboFrozen = live;
+        window.__eboCallStamp = null;
+      } else if (!window.__eboFrozen) {
+        window.__eboFrozen = live;
+      }
+      const view = (remJumped || remDead) ? (window.__eboFrozen || live) : live;
+      const mark = (remJumped || remDead) ? (window.__eboCallStamp || last) : null;
+      window.__eboCall = { rem: rem, live: live };
+      const pickRow = surfaceRowAt(t.surface, view.pick);
+      const weak = !!(view.pick && !view.stand_aside && pickIsWeak(pickRow));
+      let html = "";
+      (view.candidates || []).forEach((c) => {
+        if (c && typeof c === "object" && c.role && c.role !== "look") return;
+        html += "<span class=\"pin pink\">" + pinLabel(c) + "</span>";
+      });
+      if (view.stand_aside || !view.pick) html += "<span class=\"pin sit\">NO TRADE</span>";
+      else {
+        const m = pinMult(view.pick) || (pickRow && pickRow.multiplier != null
+          ? " · " + Number(pickRow.multiplier).toFixed(2) + "x" : "");
+        html += "<span class=\"pin blue" + (weak ? " weak" : "") + "\">" + pinLabel(view.pick) + m + "</span>";
+      }
+      pins.innerHTML = html;
+      const bits = [];
+      if (view.alignment) bits.push(view.alignment);
+      if (view.tf_lean) bits.push("tf " + view.tf_lean);
+      if (view.lesson) bits.push("<b>" + view.lesson + "</b>");
+      why.innerHTML = bits.join(" \u00b7 ");
+      paintReach(t, rem);
+      if (mark && (mark.outcome || mark.line)) {
+        const raw = mark.outcome || "";
+        const out = (raw === "stood-out" || raw === "stood_out" || raw === "unknown") ? "sit" : (raw || "sit");
+        stamp.hidden = false;
+        stamp.className = "call-stamp " + out;
+        stamp.textContent = out + (mark.line ? " \u00b7 " + mark.line : "");
+      } else if (weak) {
+        stamp.hidden = false;
+        stamp.className = "call-stamp weak sit";
+        stamp.textContent = "weak · sit";
+      } else {
+        stamp.hidden = true;
+        stamp.textContent = "";
+      }
+    }
+    function fitCanvas(c, fallbackH) {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const cssW = c.clientWidth || 900;
+      const cssH = c.clientHeight || fallbackH;
+      const w = Math.max(1, Math.round(cssW * dpr));
+      const h = Math.max(1, Math.round(cssH * dpr));
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+      const ctx = c.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssW, cssH);
+      return { ctx, w: cssW, h: cssH, dpr };
+    }
+
+    /* The whole scored board: columns are seconds ahead, rows are price rows.
+
+       Colour is the SIGN of the edge, intensity is its SIZE. It used to be
+       probability, which drew the eye to whichever cell was most likely to be
+       touched -- and those are precisely the cells the house has priced away.
+       A 92%-at-1.05x block looked important; the actual tap did not. Edge is
+       the decision variable, so edge is what the ink shows. */
+    function cellInk(r) {
+      const ev = (r.ev_lcb == null) ? null : Number(r.ev_lcb);
+      if (r.verdict === "no-fit") {
+        return { fill: "rgba(140,140,150,0.10)", stroke: "rgba(160,160,170,0.35)",
+                 dash: [2, 3], width: 1 };
+      }
+      if (r.verdict === "unreachable") {
+        // Nothing lives here. Show it as absence, not as a weak positive.
+        return { fill: "rgba(110,168,254,0.03)", stroke: "rgba(110,168,254,0.16)",
+                 dash: [1, 3], width: 1 };
+      }
+      if (ev == null) {
+        const p = Math.max(0, Math.min(1, Number(r.p_cal != null ? r.p_cal : r.p_touch) || 0));
+        return { fill: "rgba(254,160,219," + (0.08 + 0.42 * p) + ")",
+                 stroke: "rgba(254,160,219,0.55)", dash: null, width: 1 };
+      }
+      const mag = Math.min(1, Math.abs(ev) / 0.5);
+      if (ev > 0) {
+        return { fill: "rgba(48,209,88," + (0.14 + 0.62 * mag) + ")",
+                 stroke: "rgba(48,209,88," + (0.5 + 0.45 * mag) + ")",
+                 dash: null, width: r.verdict === "tap" ? 2 : 1 };
+      }
+      return { fill: "rgba(120,132,150," + (0.05 + 0.30 * mag) + ")",
+               stroke: "rgba(120,132,150,0.35)", dash: null, width: 1 };
+    }
+    function drawSurface(cells, plan, think) {
+      const c = $("surfaceMap");
+      if (!c || !c.getContext) return;
+      const { ctx, w, h } = fitCanvas(c, 300);
+      const rows = Array.isArray(cells) ? cells.filter((r) => r && r.cell_x != null) : [];
+      if (!rows.length) {
+        ctx.fillStyle = "rgba(245,245,247,0.35)";
+        ctx.font = "12px Inter, system-ui, sans-serif";
+        ctx.fillText("no surface — the tab has not sent a quote grid yet", 16, h / 2);
+        return;
+      }
+      const xs = rows.map((r) => Number(r.cell_x));
+      const ys = rows.map((r) => Number(r.cell_y));
+      const x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+      const y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+      const cols = Math.max(1, x1 - x0 + 1), rws = Math.max(1, y1 - y0 + 1);
+      const padL = 54, padB = 18;
+      const cw = (w - padL - 8) / cols;
+      const ch = (h - padB - 8) / rws;
+      for (const r of rows) {
+        const p = Math.max(0, Math.min(1, Number(r.p_cal != null ? r.p_cal : r.p_touch) || 0));
+        const x = padL + (Number(r.cell_x) - x0) * cw;
+        const y = 4 + (y1 - Number(r.cell_y)) * ch;      // price increases upward
+        const ink = cellInk(r);
+        ctx.save();
+        ctx.fillStyle = ink.fill;
+        ctx.fillRect(x + 1, y + 1, Math.max(1, cw - 2), Math.max(1, ch - 2));
+        ctx.strokeStyle = ink.stroke;
+        ctx.lineWidth = ink.width;
+        if (ink.dash) ctx.setLineDash(ink.dash);
+        ctx.strokeRect(x + 1, y + 1, Math.max(1, cw - 2), Math.max(1, ch - 2));
+        ctx.setLineDash([]);
+        // Evidence, as texture. A green cell standing on four observations must
+        // not look like one standing on four thousand.
+        if (r.ev_lcb != null && r.ev_lcb > 0 && r.trusted === false && cw > 8 && ch > 8) {
+          ctx.strokeStyle = "rgba(255,255,255,0.30)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let d = -ch; d < cw; d += 5) {
+            ctx.moveTo(x + d, y + ch);
+            ctx.lineTo(x + d + ch, y);
+          }
+          ctx.save();
+          ctx.rect(x + 1, y + 1, Math.max(1, cw - 2), Math.max(1, ch - 2));
+          ctx.clip();
+          ctx.stroke();
+          ctx.restore();
+        }
+        ctx.restore();
+        if (cw > 46 && ch > 16) {
+          ctx.fillStyle = "rgba(255,255,255,0.80)";
+          ctx.font = "9px Inter, system-ui, sans-serif";
+          ctx.textBaseline = "top";
+          ctx.fillText(Math.round(p * 100) + "%", x + 4, y + 3);
+          if (r.multiplier && ch > 28) {
+            // The divergence IS the edge: our probability against the house's.
+            const be = r.breakeven != null ? Number(r.breakeven) : null;
+            ctx.fillStyle = "rgba(255,255,255,0.45)";
+            ctx.fillText(Number(r.multiplier).toFixed(1) + "x"
+              + (be != null ? " be" + Math.round(be * 100) : ""), x + 4, y + 13);
+          }
+          if (r.ev_lcb != null && ch > 40) {
+            const ev = Number(r.ev_lcb);
+            ctx.fillStyle = ev > 0 ? "rgba(48,209,88,0.95)" : "rgba(255,255,255,0.40)";
+            ctx.fillText((ev >= 0 ? "+" : "") + ev.toFixed(2), x + 4, y + 23);
+          }
+        }
+      }
+      if (plan && plan.cell_x != null) {
+        const x = padL + (Number(plan.cell_x) - x0) * cw;
+        const y = 4 + (y1 - Number(plan.cell_y)) * ch;
+        ctx.strokeStyle = "#30d158";
+        ctx.lineWidth = 2.5;
+        ctx.strokeRect(x, y, Math.max(2, cw), Math.max(2, ch));
+      }
+      function boxAt(cell, color, width, alpha) {
+        if (!cell || cell.cell_x == null || cell.cell_y == null) return;
+        const x = padL + (Number(cell.cell_x) - x0) * cw;
+        const y = 4 + (y1 - Number(cell.cell_y)) * ch;
+        ctx.save();
+        ctx.globalAlpha = alpha == null ? 1 : alpha;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.strokeRect(x + 0.5, y + 0.5, Math.max(2, cw - 1), Math.max(2, ch - 1));
+        ctx.restore();
+      }
+      const looks = lookList(think);
+      const pick = livePick(think);
+      const weakPick = pickIsWeak(surfaceRowAt(cells, pick));
+      for (let i = 0; i < looks.length; i++) boxAt(looks[i], "rgba(254,160,219,0.95)", 2, 0.92);
+      if (pick) boxAt(pick, "rgba(110,168,254,0.95)", 2.4, weakPick ? 0.38 : 1);
+      ctx.fillStyle = "rgba(245,245,247,0.42)";
+      ctx.font = "10px Inter, system-ui, sans-serif";
+      ctx.textBaseline = "alphabetic";
+      for (let i = 0; i < cols; i += 1) {
+        const secs = rows.find((r) => Number(r.cell_x) === x0 + i);
+        const label = secs ? "+" + Math.round(Number(secs.t_end)) + "s" : "";
+        if (label && cw > 26) ctx.fillText(label, padL + i * cw + 3, h - 5);
+      }
+      ctx.fillText("price row", 4, 14);
+      ctx.fillText(String(y1), 4, 26);
+      ctx.fillText(String(y0), 4, h - padB - 2);
+    }
+
+    function drawEquity(curve) {
+      const c = $("equity");
+      if (!c || !c.getContext) return;
+      const { ctx, w, h } = fitCanvas(c, 120);
+      const pts = Array.isArray(curve) ? curve.filter((p) => p && isFinite(Number(p.balance))) : [];
+      if (pts.length < 2) {
+        ctx.fillStyle = "rgba(245,245,247,0.35)";
+        ctx.font = "12px Inter, system-ui, sans-serif";
+        ctx.fillText("no settled taps yet", 14, h / 2);
+        return;
+      }
+      const vals = pts.map((p) => Number(p.balance));
+      let lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+      if (hi - lo < 1e-9) { hi += 1; lo -= 1; }
+      const xOf = (i) => 8 + (i / (pts.length - 1)) * (w - 16);
+      const yOf = (v) => h - 10 - ((v - lo) / (hi - lo)) * (h - 22);
+      const up = vals[vals.length - 1] >= vals[0];
+      ctx.strokeStyle = up ? "#30d158" : "#ff453a";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      pts.forEach((p, i) => { const x = xOf(i), y = yOf(Number(p.balance)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
+      ctx.setLineDash([3, 4]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(8, yOf(Number(pts[0].balance)));
+      ctx.lineTo(w - 8, yOf(Number(pts[0].balance)));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    /* Predicted vs actual. Points on the diagonal mean the model tells the
+       truth about its own odds, which is the only thing that makes EV real. */
+    function drawReliability(table) {
+      const c = $("reliability");
+      if (!c || !c.getContext) return;
+      const { ctx, w, h } = fitCanvas(c, 120);
+      const pad = 12;
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pad, h - pad);
+      ctx.lineTo(w - pad, pad);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const rows = Array.isArray(table) ? table : [];
+      if (!rows.length) {
+        ctx.fillStyle = "rgba(245,245,247,0.35)";
+        ctx.font = "12px Inter, system-ui, sans-serif";
+        ctx.fillText("collecting labels…", 14, h / 2);
+        return;
+      }
+      const maxN = Math.max.apply(null, rows.map((r) => Number(r.n) || 1));
+      for (const r of rows) {
+        const px = Number(r.predicted_mid), ac = Number(r.actual);
+        if (!isFinite(px) || !isFinite(ac)) continue;
+        const x = pad + px * (w - 2 * pad);
+        const y = h - pad - ac * (h - 2 * pad);
+        const rad = 2 + 4 * Math.sqrt((Number(r.n) || 1) / maxN);
+        ctx.fillStyle = "rgba(110,168,254,0.75)";
+        ctx.beginPath();
+        ctx.arc(x, y, rad, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function paintSurface(t) {
+      const cells = t.surface || [];
+      const st = t.surface_stats;
+      const d = t.diffusion || {};
+      const v = (st && st.verdicts) || {};
+      const counts = ["tap", "thin", "unproven", "negative", "unreachable", "untouched", "no-funds", "unquoted", "no-fit"]
+        .filter((k) => v[k]).map((k) => v[k] + " " + k).join(" · ");
+      // How the tape actually moves. 0.5 is a random walk; below that it
+      // mean-reverts and long-horizon cells are far less reachable than a
+      // Brownian model claims. The house's own quotes imply about 0.09.
+      const scale = d.hurst != null
+        ? " · scale T^" + Number(d.hurst).toFixed(2) +
+          (Number(d.hurst) < 0.35 ? " (mean-reverting)" : Number(d.hurst) >= 0.5 ? " (random walk)" : "")
+        : "";
+      const tape = d.source ? " · " + d.source + " tape" + (d.degraded ? " (degraded)" : "") : "";
+      // Sigma is carried across passes because refitting it from scratch each
+      // time made it swing 16-fold while price moved six rows, and a ranking
+      // that takes the maximum then just picks the biggest error. Showing the
+      // gap between this pass's raw fit and the carried value keeps the
+      // instability visible rather than hidden by the fix.
+      let steady = "";
+      if (d.smoothed && d.raw_sigma > 0 && d.sigma > 0) {
+        const ratio = d.raw_sigma / d.sigma;
+        const off = Math.max(ratio, 1 / ratio);
+        steady = " · raw σ " + Number(d.raw_sigma).toFixed(4) +
+          " (" + (off >= 1.5 ? "jumpy " : "") + off.toFixed(2) + "×)";
+      }
+      const head = st
+        ? st.quoted + " of " + st.cells + " quoted · " + counts +
+          (st.best_ev_lcb != null ? " · best EV " + (st.best_ev_lcb >= 0 ? "+" : "") + Number(st.best_ev_lcb).toFixed(3) : "") +
+          " · " + (t.vol_bucket || "?") + " vol" +
+          (d.sigma != null ? " · σ " + Number(d.sigma).toFixed(4) + "/√s" : "") +
+          scale + steady + tape +
+          (d.ok === false ? " · NO FIT: " + (d.reason || "unavailable") : "")
+        : (cells.length ? cells.length + " cells scored (no multipliers yet)" : "waiting on the quote grid…");
+      $("surfaceHead").textContent = head;
+      $("surfaceHead").style.color = (d.ok === false) ? "var(--down)" : "";
+      drawSurface(cells, t.plan, t);
+      const top = cells.slice(0, 10);
+      $("surfaceRows").innerHTML = top.map((r) => {
+        const ev = r.ev_lcb == null ? "—" : (r.ev_lcb >= 0 ? "+" : "") + Number(r.ev_lcb).toFixed(3);
+        return "<tr><td>" + r.cell_x + "," + r.cell_y + "</td>" +
+          "<td>+" + Math.round(Number(r.t_end)) + "s</td>" +
+          "<td>" + (Number(r.p_cal != null ? r.p_cal : r.p_touch) * 100).toFixed(1) + "%</td>" +
+          "<td>" + (r.p_lcb != null ? (Number(r.p_lcb) * 100).toFixed(1) + "%" : "—") + "</td>" +
+          "<td>" + (r.multiplier != null ? Number(r.multiplier).toFixed(2) + "x" : "—") + "</td>" +
+          "<td>" + (r.breakeven != null ? (Number(r.breakeven) * 100).toFixed(1) + "%" : "—") + "</td>" +
+          "<td>" + ((r.p_lcb != null && r.breakeven != null)
+            ? "<span style=\"color:" + ((r.p_lcb - r.breakeven) > 0 ? "var(--up)" : "var(--muted)") + "\">"
+              + ((r.p_lcb - r.breakeven) >= 0 ? "+" : "")
+              + ((r.p_lcb - r.breakeven) * 100).toFixed(1) + "pp</span>"
+            : "—") + "</td>" +
+          "<td>" + ev + "</td>" +
+          "<td>" + (r.stake ? Number(r.stake).toFixed(2) : "—") + "</td>" +
+          "<td>" + (r.n_obs != null ? r.n_obs : 0) + "</td>" +
+          "<td>" + (r.verdict || "") + "</td></tr>";
+      }).join("");
+    }
+
+    /* Break chance against how long the row has already held. A flat line is a
+       memoryless tape; a rising line is the "after so many squares it moves"
+       pattern, and it is something the diffusion fit cannot represent. */
+    function drawHazard(curve, currentBucket) {
+      const c = $("hazard");
+      if (!c || !c.getContext) return;
+      const { ctx, w, h } = fitCanvas(c, 140);
+      const rows = Array.isArray(curve) ? curve : [];
+      if (!rows.length) {
+        ctx.fillStyle = "rgba(245,245,247,0.35)";
+        ctx.font = "12px Inter, system-ui, sans-serif";
+        ctx.fillText("watching how long rows hold…", 14, h / 2);
+        return;
+      }
+      const pad = 22, bw = (w - pad - 10) / rows.length;
+      const maxP = Math.max(0.05, ...rows.map((r) => Number(r.p_break) || 0));
+      rows.forEach((r, i) => {
+        const p = Number(r.p_break) || 0;
+        const bh = (p / maxP) * (h - pad - 16);
+        const x = pad + i * bw, y = h - pad - bh;
+        const live = r.bucket === currentBucket;
+        ctx.fillStyle = live ? "rgba(48,209,88,0.85)" : "rgba(110,168,254,0.55)";
+        ctx.fillRect(x + 2, y, Math.max(2, bw - 6), bh);
+        // Which way it broke, as a thin cap on the bar.
+        if (r.p_up != null) {
+          ctx.fillStyle = "rgba(255,255,255,0.55)";
+          ctx.fillRect(x + 2, y - 3, Math.max(2, (bw - 6) * Number(r.p_up)), 2);
+        }
+        ctx.fillStyle = live ? "rgba(48,209,88,0.95)" : "rgba(245,245,247,0.45)";
+        ctx.font = "9px Inter, system-ui, sans-serif";
+        ctx.textBaseline = "top";
+        ctx.fillText(r.bucket, x + 3, h - pad + 4);
+        if (bw > 34) ctx.fillText(Math.round(p * 100) + "%", x + 3, Math.max(2, y - 13));
+      });
+      ctx.fillStyle = "rgba(245,245,247,0.35)";
+      ctx.font = "9px Inter, system-ui, sans-serif";
+      ctx.fillText("squares held →", pad, 4);
+    }
+
+    /* Rows crossed per minute, by local hour. The overnight dip is the thing
+       worth seeing: one volatility number averaged over a day describes
+       neither the quiet hours nor the busy ones. */
+    function drawByHour(rows) {
+      const c = $("byHour");
+      if (!c || !c.getContext) return;
+      const { ctx, w, h } = fitCanvas(c, 140);
+      const data = (Array.isArray(rows) ? rows : []).filter((r) => r.rows_per_min != null);
+      if (!data.length) {
+        ctx.fillStyle = "rgba(245,245,247,0.35)";
+        ctx.font = "12px Inter, system-ui, sans-serif";
+        ctx.fillText("collecting hours…", 14, h / 2);
+        return;
+      }
+      const pad = 22, bw = (w - pad - 10) / data.length;
+      const maxR = Math.max(...data.map((r) => Number(r.rows_per_min)));
+      const nowBlock = (() => {
+        const hr = new Date().getHours();
+        const lo = Math.floor(hr / 4) * 4;
+        return String(lo).padStart(2, "0") + "-" + String(lo + 4).padStart(2, "0");
+      })();
+      data.forEach((r, i) => {
+        const v = Number(r.rows_per_min);
+        const bh = maxR > 0 ? (v / maxR) * (h - pad - 16) : 0;
+        const x = pad + i * bw, y = h - pad - bh;
+        const live = r.hour === nowBlock;
+        ctx.fillStyle = live ? "rgba(255,214,10,0.85)" : "rgba(110,168,254,0.5)";
+        ctx.fillRect(x + 2, y, Math.max(2, bw - 6), bh);
+        ctx.fillStyle = live ? "rgba(255,214,10,0.95)" : "rgba(245,245,247,0.45)";
+        ctx.font = "9px Inter, system-ui, sans-serif";
+        ctx.textBaseline = "top";
+        ctx.fillText(r.hour, x + 2, h - pad + 4);
+        if (bw > 34) ctx.fillText(v.toFixed(1), x + 3, Math.max(2, y - 12));
+      });
+      ctx.fillStyle = "rgba(245,245,247,0.35)";
+      ctx.fillText("rows / min →", pad, 4);
+    }
+
+    /* Behaviour, not markets. States the pattern while it is happening —
+       which is the one moment it is hardest to see from the inside. */
+    function paintTilt(t) {
+      const el = $("tiltBanner");
+      if (!el) return;
+      if (!t || !t.flagged) { el.hidden = true; return; }
+      el.hidden = false;
+      el.className = "tilt-banner" + (t.severity === "tilted" ? " tilted" : "");
+      $("tiltHead").textContent = t.severity === "tilted" ? "tilt" : "heads up";
+      $("tiltWhy").textContent = t.headline + (t.reasons && t.reasons.length
+        ? " — " + t.reasons.join(", ") : "");
+      const bits = [];
+      if (t.balance != null) bits.push("balance " + Number(t.balance).toFixed(2));
+      if (t.peak != null) bits.push("peak " + Number(t.peak).toFixed(2));
+      if (t.trades_10m) bits.push(t.trades_10m + " trades / 10m");
+      if (t.change_10m) bits.push((t.change_10m >= 0 ? "+" : "") + Number(t.change_10m).toFixed(2) + " / 10m");
+      if (t.max_stake_share != null && t.max_stake_share > 0.25) {
+        bits.push("one max stake = " + Math.round(t.max_stake_share * 100) + "% of what's left");
+      }
+      $("tiltNums").textContent = bits.join(" · ");
+    }
+
+    /* Is the tape winding up? Says a move is coming, never which way. */
+    function paintCoil(c) {
+      if (!c) return;
+      const st = String(c.state || "unknown");
+      const el = $("coilState");
+      el.textContent = st;
+      el.className = "coil-state " + st + (c.ready ? " ready" : "");
+      $("coilHead").textContent = c.headline || "";
+      $("coilFill").style.width = Math.round(Number(c.score || 0) * 100) + "%";
+      const parts = (c.factors || [])
+        .slice()
+        .sort((a, b) => (b.score * b.weight) - (a.score * a.weight))
+        .map((f) => f.detail + (f.score >= 0.5 ? " ✓" : ""));
+      $("coilWhy").textContent = parts.length
+        ? parts.join(" · ")
+        : (c.confident === false ? "needs a few minutes of tape" : "");
+    }
+
+    function paintWalk(tv) {
+      if (!tv) return;
+      const cur = tv.current || {};
+      const brk = cur.break || {};
+      const dir = cur.direction || {};
+      const host = $("walkNow");
+      const pUp = dir.p_up != null ? Number(dir.p_up) : null;
+      const lean = pUp == null ? "" : (pUp >= 0.5 ? "up" : "down");
+      const bits = [];
+      if (cur.in_row != null) {
+        bits.push("<span><span class=\"tag\">held</span> <b>" + cur.dwell_columns +
+          "</b> square" + (cur.dwell_columns === 1 ? "" : "s") + " (" + cur.dwell_s + "s)</span>");
+      }
+      if (brk.p_break != null) {
+        bits.push("<span><span class=\"tag\">breaks next</span> <b>" +
+          Math.round(Number(brk.p_break) * 100) + "%</b>" +
+          (brk.trusted ? "" : " <span class=\"tag\">n=" + brk.n + " thin</span>") + "</span>");
+      }
+      if (pUp != null) {
+        bits.push("<span><span class=\"tag\">if it breaks</span> <b class=\"" + lean + "\">" +
+          Math.round(pUp * 100) + "% up</b> / " + Math.round((1 - pUp) * 100) + "% down</span>");
+        bits.push("<span class=\"updown\"><i class=\"u\" style=\"width:" + (pUp * 100) +
+          "%\"></i><i class=\"d\" style=\"width:" + ((1 - pUp) * 100) + "%\"></i></span>");
+      }
+      if (cur.position_in_row != null) {
+        // Outside [0,1] means price has slipped past the edge without yet
+        // clearing the confirmation margin — it is leaning on that boundary.
+        const pos = Number(cur.position_in_row);
+        const where = pos < 0 ? "leaning on the floor"
+          : pos > 1 ? "leaning on the ceiling"
+          : "sitting " + Math.round(pos * 100) + "% up the row";
+        bits.push("<span class=\"tag\">" + where + "</span>");
+      }
+      if (cur.hour) bits.push("<span class=\"tag\">" + cur.hour + " local</span>");
+      host.innerHTML = bits.join("") || "waiting on the tape…";
+
+      drawHazard(tv.hazard_curve, brk.bucket);
+      drawByHour(tv.by_hour);
+      $("hazardLine").textContent =
+        "base break chance " + Math.round(Number(tv.base_break_chance || 0) * 100) + "%" +
+        " · " + (tv.visits || 0) + " row visits recorded" +
+        " · white cap on each bar = share that broke upward";
+      const quiet = tv.quietest_hour, busy = tv.busiest_hour;
+      $("hourLine").textContent = (quiet && busy)
+        ? "quietest " + quiet + " · busiest " + busy + " (local time)"
+        : "needs a few hours of tape before the pattern is real";
+    }
+
+    /* Attribution, not just a number. "Up 4" is not knowledge; "up 4 on
+       at-the-money shorts and down 6 on far lottery cells" is. */
+    function paintPnl(p) {
+      if (!p) return;
+      const s = p.paper || {};
+      const money = (v) => (v == null ? "—" : (v >= 0 ? "+" : "") + Number(v).toFixed(2));
+      const tint = (v) => (v == null ? "var(--muted)" : (v > 0 ? "var(--up)" : v < 0 ? "var(--down)" : "var(--muted)"));
+      const st = s.streaks || {};
+      $("pnlHead").innerHTML = s.trades
+        ? "<b style=\"color:" + tint(s.pnl) + "\">" + money(s.pnl) + "</b> paper on " +
+          s.trades + " settled · " + Math.round((s.hit_rate || 0) * 100) + "% hit · " +
+          "staked " + Number(s.staked || 0).toFixed(2) + " · " +
+          "per unit " + (s.expectancy_per_unit == null ? "—" : money(s.expectancy_per_unit)) + " · " +
+          "avg " + (s.avg_multiplier || "—") + "x · max DD " + Number(s.max_drawdown || 0).toFixed(2) +
+          " · streak " + (st.current || 0) + " (best " + (st.longest_win || 0) +
+          "W / " + (st.longest_loss || 0) + "L)"
+        : "no settled trades yet";
+      /* Live: this run only, with the two ledgers set against each other.
+         Real money falling while the policy is flat means losses it never
+         chose — worth seeing now, not in a daily total. */
+      const ss = p.session || {};
+      const mins = ss.elapsed_s ? Math.round(ss.elapsed_s / 60) : 0;
+      const unex = ss.unexplained;
+      $("pnlLive").innerHTML =
+        "<span class=\"tag\">this run (" + mins + "m)</span>" +
+        "<span><b style=\"color:" + tint(ss.paper_pnl) + "\">" + money(ss.paper_pnl) + "</b>" +
+        " <span class=\"tag\">paper on " + (ss.paper_trades || 0) + "</span></span>" +
+        (ss.real_change == null ? "" :
+          "<span><b style=\"color:" + tint(ss.real_change) + "\">" + money(ss.real_change) + "</b>" +
+          " <span class=\"tag\">real</span></span>") +
+        (unex == null || Math.abs(unex) < 0.005 ? "" :
+          "<span><b style=\"color:" + tint(unex) + "\">" + money(unex) + "</b>" +
+          " <span class=\"tag\">not from the policy</span></span>") +
+        (ss.balance_now == null ? "" :
+          "<span class=\"tag\">balance " + Number(ss.balance_now).toFixed(2) + "</span>");
+
+      const integ = p.integrity || {};
+      $("pnlIntegrity").textContent =
+        (integ.settlements_booked || 0) + " settlements booked" +
+        (integ.missed_settlements
+          ? " · ⚠ " + integ.missed_settlements + " lost before booking"
+          : " · none lost");
+      $("pnlIntegrity").style.color = integ.missed_settlements ? "var(--down)" : "";
+
+      const r = p.real || {};
+      $("pnlReal").innerHTML = r.balance == null ? "" :
+        "real balance <b>" + Number(r.balance).toFixed(2) + "</b> USDM · since first seen " +
+        "<span style=\"color:" + tint(r.change) + "\">" + money(r.change) + "</span>" +
+        " · attributable to trading " + money(r.trading_change) +
+        (r.suspect_transfers ? " · " + r.suspect_transfers +
+          " large move" + (r.suspect_transfers === 1 ? "" : "s") + " look like deposits/withdrawals" : "");
+
+      const row = (x) =>
+        "<tr><td>" + x.key + "</td><td>" + x.n + "</td>" +
+        "<td>" + (x.hit_rate == null ? "—" : Math.round(x.hit_rate * 100) + "%") + "</td>" +
+        "<td>" + Number(x.staked).toFixed(2) + "</td>" +
+        "<td style=\"color:" + tint(x.pnl) + "\">" + money(x.pnl) + "</td>" +
+        "<td style=\"color:" + tint(x.expectancy) + "\">" +
+        (x.expectancy == null ? "—" : money(x.expectancy)) + "</td></tr>";
+      const att = p.attribution || {};
+      const fill = (id, rows) => {
+        const el = $(id);
+        if (el) el.innerHTML = (rows || []).map(row).join("") ||
+          "<tr><td colspan=\"6\" class=\"meta\">nothing settled yet</td></tr>";
+      };
+      fill("pnlDistance", att.by_distance);
+      fill("pnlMultiplier", att.by_multiplier);
+      fill("pnlHorizon", att.by_horizon);
+      fill("pnlDay", p.by_day);
+    }
+
+    /* The operator's own trades, and how our surface rated each cell they
+       chose. This is the only ground truth in the system that cost money. */
+    function paintPlayer(p) {
+      if (!p) return;
+      const s = p.summary || {};
+      const money = (v) => (v == null ? "—" : (v >= 0 ? "+" : "") + Number(v).toFixed(2));
+      const tint = (v) => (v == null ? "var(--muted)" : (v > 0 ? "var(--up)" : v < 0 ? "var(--down)" : "var(--muted)"));
+      $("playerHead").innerHTML = s.trades
+        ? "<span><b style=\"color:" + tint(s.pnl) + "\">" + money(s.pnl) + "</b>" +
+          " <span class=\"tag\">real, on " + s.trades + " settled</span></span>" +
+          "<span><b>" + Math.round((s.hit_rate || 0) * 100) + "%</b> <span class=\"tag\">hit</span></span>" +
+          "<span class=\"tag\">staked " + Number(s.staked || 0).toFixed(2) + "</span>" +
+          "<span class=\"tag\">per unit " + (s.expectancy_per_unit == null ? "—" : money(s.expectancy_per_unit)) + "</span>"
+        : "no real trades seen yet — tap on the chart and they land here";
+      const ag = p.agreement || {};
+      const bits = [];
+      if (ag.matched != null) bits.push(ag.matched + " matched to a scored cell");
+      if (ag.player_brier != null) bits.push("your-trade Brier " + Number(ag.player_brier).toFixed(4));
+      if (s.unmatched_settles) bits.push("⚠ " + s.unmatched_settles + " settlements arrived without their tap");
+      if (s.window_settled) bits.push(s.window_settled + " window-settled · square unknown");
+      if (s.unresolved_taps) bits.push(s.unresolved_taps + " taps did not resolve to a quoted cell");
+      if (s.rejected) bits.push(s.rejected + " rejected");
+      const cal = p.calibration || {};
+      if (cal.labelled_total) bits.push(cal.labelled_total + " real-money labels in " + (cal.buckets || 0) + " buckets");
+      $("playerHealth").textContent = bits.join(" · ");
+
+      $("playerAgree").innerHTML = (ag.by_our_verdict || []).map((r) =>
+        "<tr><td>" + r.our_verdict + "</td><td>" + r.n + "</td>" +
+        "<td>" + (r.hit_rate == null ? "—" : Math.round(r.hit_rate * 100) + "%") + "</td>" +
+        "<td>" + Number(r.staked).toFixed(2) + "</td>" +
+        "<td style=\"color:" + tint(r.pnl) + "\">" + money(r.pnl) + "</td>" +
+        "<td style=\"color:" + tint(r.expectancy) + "\">" +
+        (r.expectancy == null ? "—" : money(r.expectancy)) + "</td></tr>").join("") ||
+        "<tr><td colspan=\"6\" class=\"meta\">nothing settled yet</td></tr>";
+
+      $("playerRows").innerHTML = (p.recent || []).slice().reverse().map((r) =>
+        "<tr><td>" + fmtTime(r.ts) + "</td>" +
+        "<td>" + (r.cell_x != null ? r.cell_x + "," + r.cell_y : "—") + "</td>" +
+        "<td>" + (r.multiplier != null ? Number(r.multiplier).toFixed(2) + "x" : "—") + "</td>" +
+        "<td>" + (r.our_verdict || "—") + "</td>" +
+        "<td>" + (r.our_p_cal == null ? "—" : Math.round(r.our_p_cal * 100) + "%") + "</td>" +
+        "<td>" + Number(r.stake || 0).toFixed(2) + "</td>" +
+        "<td class=\"" + (r.win ? "win" : "loss") + "\">" + (r.win ? "win" : "loss") + "</td>" +
+        "<td style=\"color:" + tint(r.delta) + "\">" + money(r.delta) + "</td></tr>").join("") ||
+        "<tr><td colspan=\"8\" class=\"meta\">no settled trades yet</td></tr>";
+    }
+
+    /* Three books over the same window: what you actually did, what the
+       disciplined policy did, and what it would do without its evidence gate.
+       The gap between the last two is the price of caution; the gap between
+       the first two is the question worth answering. */
+    function paintShadow(sh, pnl) {
+      if (!sh) return;
+      const money = (v) => (v == null ? "—" : (v >= 0 ? "+" : "") + Number(v).toFixed(2));
+      const tint = (v) => (v == null ? "var(--muted)" : (v > 0 ? "var(--up)" : v < 0 ? "var(--down)" : "var(--muted)"));
+      const c = sh.compare || {};
+      const ss = (pnl && pnl.session) || {};
+      const set3 = (id, sub, val, subtext) => {
+        const el = $(id); if (el) { el.textContent = money(val); el.style.color = tint(val); }
+        const s = $(sub); if (s) s.textContent = subtext;
+      };
+      set3("cmpYou", "cmpYouSub", c.you_real,
+        (ss.real_moves ? ss.real_moves + " balance moves" : "no balance change seen") +
+        (ss.balance_now != null ? " · now " + Number(ss.balance_now).toFixed(2) : ""));
+      set3("cmpPolicy", "cmpPolicySub", c.policy_paper,
+        (ss.paper_trades || 0) + " trades" +
+        (ss.paper_hit_rate != null ? " · " + Math.round(ss.paper_hit_rate * 100) + "% hit" : "") +
+        " · gated on evidence");
+      const b = sh.bankroll || {};
+      set3("cmpShadow", "cmpShadowSub", c.shadow_paper,
+        (c.shadow_trades || 0) + " trades" +
+        (c.shadow_hit_rate != null ? " · " + Math.round(c.shadow_hit_rate * 100) + "% hit" : "") +
+        " · flat " + Number(sh.stake || 1).toFixed(2) + " stake" +
+        (sh.open ? " · " + sh.open + " open" : ""));
+      $("shadowNote").textContent = sh.note +
+        (b.max_drawdown ? " · shadow max drawdown " + Number(b.max_drawdown).toFixed(2) : "");
+      $("shadowRows").innerHTML = (sh.recent || []).slice().reverse().map((r) =>
+        "<tr><td>" + fmtTime(r.ts) + "</td>" +
+        "<td>" + r.cell_x + "," + r.cell_y + "</td>" +
+        "<td>" + (r.side || "") + "</td>" +
+        "<td>" + (r.multiplier != null ? Number(r.multiplier).toFixed(2) + "x" : "—") + "</td>" +
+        "<td>" + Number(r.stake || 0).toFixed(2) + "</td>" +
+        "<td class=\"" + (r.outcome || "") + "\">" + (r.outcome || "") + "</td>" +
+        "<td style=\"color:" + tint(r.delta) + "\">" + money(r.delta) + "</td></tr>").join("") ||
+        "<tr><td colspan=\"7\" class=\"meta\">shadow has not settled a trade yet</td></tr>";
+    }
+
+    function paintLearning(l) {
+      if (!l) return;
+      const cal = l.calibration || {};
+      const bd = l.board || {};
+      const bank = l.bankroll || {};
+      $("learnHead").textContent =
+        (bd.graded_cells || 0).toLocaleString() + " cells graded · " +
+        (cal.labelled_total || 0).toLocaleString() + " labels in " + (cal.buckets || 0) + " buckets (" +
+        (cal.warm_buckets || 0) + " warm)" +
+        (bd.touch_rate != null ? " · observed touch rate " + (bd.touch_rate * 100).toFixed(1) + "%" : "") +
+        (bd.dropped_windows ? " · " + bd.dropped_windows + " windows dropped (no tape)" : "") +
+        " · pending " + (bd.pending || 0);
+      drawEquity(bank.equity);
+      const w = l.wallet || {};
+      const page = w.page;
+      const chain = w.chain || {};
+      $("walletLine").textContent =
+        (page ? "in-game " + Number(page.balance).toFixed(2) + " USDM (from tab)"
+              : "in-game — (tab has not reported a balance yet)") +
+        (chain.ok ? " · on-chain " + Number(chain.usdm || 0).toFixed(4) + " USDM / " +
+                    Number(chain.native || 0).toFixed(5) + " ETH" : "") +
+        (chain.address ? " · " + chain.address.slice(0, 6) + "…" + chain.address.slice(-4) +
+                         " (" + chain.source + ")" : "") +
+        (chain.error ? " · chain: " + chain.error : "") +
+        " · sizing against " + Number(w.sizing_balance || 0).toFixed(2) + " (" + (w.sizing_source || "paper") + ")";
+      const pnl = Number(bank.pnl || 0);
+      $("bankLine").textContent =
+        "balance " + Number(bank.balance || 0).toFixed(2) + " (" + (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + ")" +
+        " · " + (bank.wins || 0) + "W/" + (bank.losses || 0) + "L" +
+        (bank.hit_rate != null ? " · " + (bank.hit_rate * 100).toFixed(0) + "% hit" : "") +
+        " · staked " + Number(bank.staked || 0).toFixed(2) +
+        " · max DD " + Number(bank.max_drawdown || 0).toFixed(2) +
+        (bank.live_synced ? " · live balance" : " · paper");
+      drawReliability(cal.reliability);
+      $("brierLine").textContent =
+        (cal.brier != null ? "Brier " + Number(cal.brier).toFixed(4) + " (lower is better)" : "Brier —") +
+        " · " + (cal.observations || 0).toLocaleString() + " observations";
+      const taps = (bd.recent_taps || []).slice().reverse();
+      $("tapRows").innerHTML = taps.map((tp) =>
+        "<tr><td>" + fmtTime(tp.ts) + "</td><td>" + tp.cell_x + "," + tp.cell_y + "</td>" +
+        "<td>" + (tp.side || "") + "</td><td>" + Number(tp.stake || 0).toFixed(2) + "</td>" +
+        "<td>" + (tp.multiplier != null ? Number(tp.multiplier).toFixed(2) + "x" : "—") + "</td>" +
+        "<td class=\"" + (tp.outcome || "") + "\">" + (tp.outcome || "") + "</td>" +
+        "<td>" + (tp.delta >= 0 ? "+" : "") + Number(tp.delta || 0).toFixed(2) + "</td></tr>"
+      ).join("");
+    }
+
+    let _paintKey = "";
+    function paintKey(status, think) {
+      const t = think || {};
+      const tape = t.tape || {};
+      const grade = t.grade || {};
+      const last = grade.last || {};
+      const q = status.quotes || {};
+      const rem = Number(tape.window_remaining_s);
+      const winS = Number(tape.window_s) || 5;
+      const wid = tape.window_id != null ? tape.window_id : (isFinite(rem) ? Math.floor((Date.now() / 1000 - rem) / winS) : "");
+      const orbState = (window.eboOrbStateFromThink && window.eboOrbStateFromThink(t)) || "connecting";
+      const pick = t.pick || t.suggested || "";
+      const pickId = (pick && typeof pick === "object") ? (pick.cell || pick.label || pick.side || "") : pick;
+      return [
+        status.seq, status.running, status.mode, status.dry_run ? 1 : 0,
+        status.last_error || "",
+        (status.extension || {}).connected ? 1 : 0,
+        (q.ETH && q.ETH.price) || "",
+        (q.BTC && q.BTC.price) || "",
+        wid, orbState, grade.hit_rate,
+        last.outcome || last.line || grade.line || "",
+        t.bias || "", Number(t.confidence || 0).toFixed(2),
+        t.stand_aside ? 1 : 0, t.sit_reason || t.why || "",
+        pickId,
+        (t.surface && t.surface.length) || 0,
+        (t.player_edge && t.player_edge.line) || "",
+        (pick && typeof pick === "object" && pick.multiplier) || "",
+        (status.grid && status.grid.n_cells) || 0,
+        t.reach_prob != null ? Number(t.reach_prob).toFixed(2) : "",
+        (pick && typeof pick === "object" && pick.cell_x != null) ? (pick.cell_x + "," + pick.cell_y) : "",
+        (function () {
+          const r = surfaceRowAt(t.surface, (pick && typeof pick === "object") ? pick : null);
+          return r ? ((r.verdict || "") + "|" + r.p_cal + "|" + r.multiplier) : "";
+        })()
+      ].join("\x1f");
+    }
+    function paintLive(status, think) {
+      const q = status.quotes || {};
+      const ethPx = $("ethPx"), btcPx = $("btcPx"), ethSrc = $("ethSrc"), btcSrc = $("btcSrc");
+      if (ethPx) { const v = fmtPx(q.ETH); if (ethPx.textContent !== v) ethPx.textContent = v; }
+      if (btcPx) { const v = fmtPx(q.BTC); if (btcPx.textContent !== v) btcPx.textContent = v; }
+      if (ethSrc) { const v = fmtSrc(q.ETH); if (ethSrc.textContent !== v) ethSrc.textContent = v; }
+      if (btcSrc) { const v = fmtSrc(q.BTC); if (btcSrc.textContent !== v) btcSrc.textContent = v; }
+      const t = think || {};
+      const rem = (t.tape && t.tape.window_remaining_s) || 0;
+      const win = t.tape && t.tape.window_s ? t.tape.window_s : 5;
+      const ring = $("windowRing");
+      if (ring) {
+        const pct = Math.round((rem / win) * 100) + "%";
+        if (ring.style.getPropertyValue("--win") !== pct) ring.style.setProperty("--win", pct);
+      }
+      paintReach(t, rem);
+      paintQuote(status, t);
+      paintEdge(t);
+    }
+    function paintQuote(status, t) {
+      const el = $("quoteStrip");
+      if (!el) return;
+      const surface = (t && t.surface) || [];
+      const pick = livePick(t);
+      const tiles = [];
+      const seen = {};
+      function add(c, kind) {
+        if (!c || typeof c !== "object") return;
+        const k = (c.cell_x != null && c.cell_y != null)
+          ? (Number(c.cell_x) + "," + Number(c.cell_y)) : pinLabel(c);
+        if (!k || seen[k]) return;
+        seen[k] = true;
+        tiles.push({ c: c, kind: kind, row: surfaceRowAt(surface, c) });
+      }
+      lookList(t).forEach((c) => add(c, "pink"));
+      if (pick) add(pick, "blue");
+      const show = tiles.slice(0, 3);
+      if (!show.length) {
+        el.className = "meta";
+        if (el.innerHTML) el.innerHTML = "";
+        return;
+      }
+      el.className = "meta quote-tiles";
+      const html = show.map((tile) => {
+        const r = tile.row || {};
+        const rawM = r.multiplier != null ? r.multiplier : tile.c.multiplier;
+        const mult = (rawM != null && isFinite(Number(rawM))) ? Number(rawM).toFixed(2) + "x" : "—";
+        const rawP = r.p_cal != null ? r.p_cal : r.p_touch;
+        const pTxt = (rawP != null && isFinite(Number(rawP))) ? Number(rawP).toFixed(2) : "—";
+        const ver = r.verdict || "—";
+        const weak = tile.kind === "blue" && pickIsWeak(r);
+        return "<div class=\"quote-tile " + tile.kind + (weak ? " weak" : "") + "\">" +
+          "<span class=\"q-mult\">" + mult + "</span>" +
+          "<span class=\"q-p\">" + pTxt + "</span>" +
+          "<span class=\"q-ver\">" + ver + "</span></div>";
+      }).join("");
+      if (el.innerHTML !== html) el.innerHTML = html;
+    }
+    function paintEdge(t) {
+      const el = $("edgeLine");
+      if (!el) return;
+      const line = (t && t.player_edge && t.player_edge.line) || "";
+      if (el.textContent !== line) el.textContent = line;
+    }
+    function paint(status, think) {
+      const think0 = think || status.think || {};
+      paintLive(status, think0);
+      const key = paintKey(status, think0);
+      if (key === _paintKey) return;
+      _paintKey = key;
+      const dry = !!status.dry_run;
+      $("dry").textContent = dry ? "dry-run" : "live";
+      $("dry").className = "badge " + (dry ? "dry" : "live");
+      $("run").textContent = status.running ? "running" : "stopped";
+      $("run").className = "badge " + (status.running ? "on" : "off");
+      $("modeBadge").textContent = status.mode || "manual";
+      $("btnStart").classList.toggle("active", !!status.running);
+      $("btnStop").classList.toggle("danger", true);
+      $("btnStop").classList.toggle("active", !status.running);
+      $("btnManual").classList.toggle("active", status.mode === "manual");
+      $("btnAuto").classList.toggle("active", status.mode === "auto");
+      const q = status.quotes || {};
+      $("ethPx").textContent = fmtPx(q.ETH);
+      $("btcPx").textContent = fmtPx(q.BTC);
+      $("ethSrc").textContent = fmtSrc(q.ETH);
+      $("btcSrc").textContent = fmtSrc(q.BTC);
+      drawTape((q.ETH && q.ETH.history) || [], think0.tape || {}, (think0.grade && think0.grade.last) || null);
+      const rem = (think0.tape && think0.tape.window_remaining_s) || 0;
+      const win = think0.tape && think0.tape.window_s ? think0.tape.window_s : 5;
+      $("windowRing").style.setProperty("--win", Math.round((rem / win) * 100) + "%");
+      const ext = status.extension || {};
+      let extLabel = "tab offline";
+      if (ext.connected) extLabel = "tab connected";
+      else if (ext.session_only) extLabel = "session only / redstone";
+      $("extBadge").textContent = extLabel;
+      $("extBadge").className = "badge " + (ext.connected ? "on" : "off");
+      $("err").textContent = status.last_error || "";
+      const s = status.session || {};
+      $("session").textContent =
+        "session: " + (s.cookie_names || []).join(", ") +
+        (s.cookie_names && s.cookie_names.length ? "" : "no cookies") +
+        " · artefacts " + ((s.artefact_names || []).join(", ") || "none") +
+        (s.privy_user_id_set ? " · privyUserId set" : "");
+      const t = think || status.think || {};
+      const orbState = (window.eboOrbStateFromThink && window.eboOrbStateFromThink(t)) || "connecting";
+      if (!window.eboOrb && window.eboMountThinkingOrb) {
+        const orbEl = $("eboOrb");
+        if (orbEl) window.eboOrb = window.eboMountThinkingOrb(orbEl, { size: 80, dark: true });
+      }
+      if (window.eboOrb) window.eboOrb.setState(orbState);
+      const orbCap = $("eboOrbCap");
+      if (orbCap) orbCap.textContent = ($("eboOrb") && $("eboOrb").getAttribute("aria-label")) || "";
+      const agent = $("eboAgent");
+      if (agent) {
+        agent.dataset.state = orbState;
+        const showFace = orbState === "breathing" || orbState === "connecting";
+        agent.classList.toggle("face", showFace);
+        agent.classList.toggle("orb", !showFace);
+        if (window.eboOrb) {
+          if (showFace) { if (window.eboOrb.stop) window.eboOrb.stop(); }
+          else if (window.eboOrb.start) window.eboOrb.start();
+        }
+      }
+      const bias = t.bias || "flat";
+      if (window.__eboLastBias !== bias && window.eboMotion) eboMotion.flash($("bias"));
+      window.__eboLastBias = bias;
+      $("bias").textContent = bias;
+      $("bias").className = "think-bias " + bias;
+      const conf = Number(t.confidence || 0);
+      $("conf").textContent = "confidence " + conf.toFixed(2);
+      $("confBar").style.width = Math.round(conf * 100) + "%";
+      const standAside = t.stand_aside != null ? !!t.stand_aside : !t.pick;
+      const why = t.sit_reason || t.why || t.hint || t.reason || "waiting on ticks";
+      const setup = (t.setup && t.setup !== "none") ? t.setup : "none";
+      const action = t.action || (standAside ? "sit" : "tap");
+      $("hint").textContent = standAside ? ("no trade — " + why) : why;
+      $("setup").textContent = "setup " + setup + " · " + action +
+        (t.pink_age_s != null ? " · pink " + Number(t.pink_age_s).toFixed(1) + "s" : "") +
+        (t.range_shrinking ? " · range shrinking" : "");
+      $("reason").textContent = (t.looking ? "looking at " + t.looking : "") +
+        (t.reason ? (t.looking ? " · " : "") + t.reason : "");
+      const frames = t.timeframes || {};
+      const keys = ["1m", "5m", "1h", "4h", "D", "M"];
+      $("tfLine").textContent =
+        (t.tf_lean ? "higher TF " + t.tf_lean : "higher TF unknown") +
+        (t.alignment && t.alignment !== "unknown" ? " · " + t.alignment : "") +
+        (t.tf_line ? " · " + t.tf_line : "");
+      $("tfChips").innerHTML = keys.map((k) => {
+        const f = frames[k] || {};
+        const lean = f.lean || "unknown";
+        const pct = (f.change_pct != null) ? " " + Number(f.change_pct).toFixed(2) + "%" : "";
+        return "<span class=\"" + lean + "\">" + k + " " + lean + pct + "</span>";
+      }).join("");
+      $("suggested").textContent = fmtSuggested(t.suggested || t.pick, t.hint, t.candidates || t.looking_at);
+      $("grade").textContent = (t.grade && t.grade.line) || "last window —";
+      const rows = (status.decisions || []).slice().reverse();
+      $("log").innerHTML = rows.map((d) =>
+        "<tr><td>" + fmtTime(d.ts) + "</td><td>" + (d.action || "") +
+        "</td><td>" + (d.bias || "") + "</td><td>" + (d.detail || d.reason || "") + "</td></tr>"
+      ).join("");
+      const glow = Math.max(0, Math.min(1, Number(t.confidence || 0)));
+      $("bias").style.textShadow = "0 0 " + Math.round(6 + glow * 22) + "px color-mix(in srgb, var(--hud) " + Math.round((0.15 + glow * 0.55) * 100) + "%, transparent)";
+      $("bias").style.opacity = String(0.62 + glow * 0.38);
+      paintGrades(t);
+      paintSit(t);
+      paintCall(t);
+      paintQuote(status, t);
+      paintEdge(t);
+      paintSurface(t);
+      paintTilt(t.tilt);
+      paintCoil(t.coil);
+      paintWalk(t.traversal);
+      paintLearning(t.learning);
+      paintPnl(t.learning && t.learning.pnl);
+      paintPlayer(t.learning && t.learning.player);
+      paintShadow(t.learning && t.learning.shadow, t.learning && t.learning.pnl);
+    }
+    function applySnapshot(status) {
+      paint(status, status.think || {});
+    }
+    async function refresh() {
+      try {
+        const status = await fetch("/status").then((r) => r.json());
+        applySnapshot(status);
+      } catch (e) {
+        $("err").textContent = "control room unreachable";
+      }
+    }
+    let sseOk = false;
+    let pollTimer = null;
+    function startPoll() {
+      if (pollTimer) return;
+      pollTimer = setInterval(refresh, 2000);
+    }
+    function stopPoll() {
+      if (!pollTimer) return;
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    function connectEvents() {
+      try {
+        const es = new EventSource("/events");
+        es.addEventListener("state", (ev) => {
+          sseOk = true;
+          stopPoll();
+          try { applySnapshot(JSON.parse(ev.data)); } catch (e) { /* ignore */ }
+        });
+        es.onopen = () => { sseOk = true; stopPoll(); };
+        es.onerror = () => { sseOk = false; startPoll(); };
+      } catch (e) {
+        startPoll();
+      }
+    }
+    $("btnStart").onclick = () => post("/start").then(applySnapshot);
+    $("btnStop").onclick = () => post("/stop").then(applySnapshot);
+    $("btnManual").onclick = () => post("/mode", { mode: "manual" }).then(applySnapshot);
+    $("btnAuto").onclick = () => post("/mode", { mode: "auto" }).then(applySnapshot);
+
+    const BACKDROPS = [
+      { id: "terrace", src: "/bg/terrace.png", label: "Terrace" },
+      { id: "courtyard", src: "/bg/courtyard.png", label: "Courtyard" },
+      { id: "selphie", src: "/bg/selphie.png", label: "Collage" },
+      { id: "aero", src: "/bg/aero.png", label: "Aero" },
+      { id: "lounge", src: "/bg/lounge.png", label: "Lounge" },
+      { id: "neon", src: "/bg/neon.png", label: "Neon" },
+      { id: "techno", src: "/bg/techno.png", label: "Techno" },
+      { id: "showroom", src: "/bg/showroom.png", label: "Showroom" },
+      { id: "magazine", src: "/bg/magazine.png", label: "Magazine" },
+      { id: "momentum", src: "/bg/momentum.png", label: "Momentum" },
+      { id: "tunnel", src: "/bg/tunnel.png", label: "Tunnel" },
+      { id: "candybar", src: "/bg/candybar.png", label: "Candybar" },
+      { id: "chrome", src: "/bg/chrome.png", label: "Chrome" },
+      { id: "coast", src: "/bg/coast.png", label: "Coast" },
+      { id: "softclub", src: "/bg/softclub.png", label: "Softclub" },
+      { id: "shop", src: "/bg/shop.png", label: "Shop" },
+      { id: "alley", src: "/bg/alley.png", label: "Alley" },
+      { id: "crtden", src: "/bg/crtden.png", label: "CRT den" },
+      { id: "loft", src: "/bg/loft.png", label: "Loft" },
+      { id: "hub", src: "/bg/hub.png", label: "Hub" },
+      { id: "waffle", src: "/bg/waffle.png", label: "Waffle" },
+      { id: "dualtone", src: "/bg/dualtone.png", label: "Dualtone" },
+      { id: "shelves", src: "/bg/shelves.png", label: "Shelves" },
+      { id: "stools", src: "/bg/stools.png", label: "Stools" },
+      { id: "depart", src: "/bg/depart.png", label: "Depart" },
+      { id: "platform", src: "/bg/platform.png", label: "Platform" },
+      { id: "magalley", src: "/bg/magalley.png", label: "Magalley" },
+      { id: "liminal", src: "/bg/liminal.png", label: "Liminal" },
+      { id: "icebar", src: "/bg/icebar.png", label: "Ice bar" },
+      { id: "shards", src: "/bg/shards.png", label: "Shards" },
+      { id: "softgrid", src: "/bg/softgrid.png", label: "Soft grid" },
+      { id: "orbdesk", src: "/bg/orbdesk.png", label: "Orb desk" },
+      { id: "nightunnel", src: "/bg/nightunnel.png", label: "Night tunnel" },
+      { id: "limehall", src: "/bg/limehall.png", label: "Lime hall" },
+      { id: "mercury", src: "/bg/mercury.png", label: "Mercury" },
+      { id: "frostclub", src: "/bg/frostclub.png", label: "Frost club" },
+      { id: "plaza", src: "/bg/plaza.png", label: "Plaza" },
+      { id: "360den", src: "/bg/360den.png", label: "360 den" },
+      { id: "aeroorb", src: "/bg/aeroorb.png", label: "Aero orb" },
+      { id: "wirehud", src: "/bg/wirehud.png", label: "Wire HUD" },
+      { id: "grind", src: "/bg/grind.png", label: "Grind" },
+      { id: "viewcomic", src: "/bg/viewcomic.png", label: "View comic" },
+      { id: "nightrace", src: "/bg/nightrace.png", label: "Night race" },
+      { id: "shardhud", src: "/bg/shardhud.png", label: "Shard HUD" },
+      { id: "spirit", src: "/bg/spirit.png", label: "Spirit" },
+      { id: "kabuki", src: "/bg/kabuki.png", label: "Kabuki" },
+      { id: "limeaero", src: "/bg/limeaero.png", label: "Lime aero" },
+      { id: "crunch", src: "/bg/crunch.png", label: "Crunch" },
+      { id: "underpass", src: "/bg/underpass.png", label: "Underpass" },
+      { id: "overpass", src: "/bg/overpass.png", label: "Overpass" },
+      { id: "jersey", src: "/bg/jersey.png", label: "Jersey" },
+      { id: "towerdusk", src: "/bg/towerdusk.png", label: "Tower dusk" },
+      { id: "orangebox", src: "/bg/orangebox.png", label: "Orange box" },
+      { id: "baggage", src: "/bg/baggage.png", label: "Baggage" },
+      { id: "bluedeck", src: "/bg/bluedeck.png", label: "Blue deck" },
+      { id: "diorama", src: "/bg/diorama.png", label: "Diorama" },
+      { id: "duskline", src: "/bg/duskline.png", label: "Dusk line" },
+      { id: "softcar", src: "/bg/softcar.png", label: "Soft car" },
+      { id: "ravedisc", src: "/bg/ravedisc.png", label: "Rave disc" },
+      { id: "visorcam", src: "/bg/visorcam.png", label: "Visor cam" },
+      { id: "ref-tilt", src: "/bg/ref-tilt.png", label: "Ref tilt" },
+      { id: "ref-softclub", src: "/bg/ref-softclub.png", label: "Ref softclub" },
+      { id: "ref-ps2", src: "/bg/ref-ps2.png", label: "Ref ps2" },
+      { id: "ref-visor", src: "/bg/ref-visor.png", label: "Ref visor" },
+      { id: "ref-vaio", src: "/bg/ref-vaio.png", label: "Ref vaio" },
+      { id: "ref-platform", src: "/bg/ref-platform.png", label: "Ref platform" },
+      { id: "diorama2", src: "/bg/diorama2.png", label: "Diorama 2" },
+      { id: "softclub2", src: "/bg/softclub2.png", label: "Softclub 2" },
+      { id: "ps2face", src: "/bg/ps2face.png", label: "PS2 face" },
+      { id: "visor2", src: "/bg/visor2.png", label: "Visor 2" },
+      { id: "vaio2", src: "/bg/vaio2.png", label: "Vaio 2" },
+      { id: "greenplatform", src: "/bg/greenplatform.png", label: "Green platform" },
+    ];
+    const LS_BG = "ebo-bg";
+    const LS_FAV = "ebo-bg-favs";
+    const LS_CYCLE = "ebo-bg-cycle";
+    const LS_ON = "ebo-bg-cycle-on";
+    const LS_CUSTOM = "ebo-bg-custom";
+    const LS_HIDDEN = "ebo-bg-hidden";
+    const CYCLE_MS = 10000;
+    function loadCustom() {
+      try {
+        const arr = JSON.parse(localStorage.getItem(LS_CUSTOM) || "[]");
+        if (!Array.isArray(arr)) return [];
+        return arr.filter((b) => b && typeof b.id === "string" && typeof b.src === "string");
+      } catch (e) { return []; }
+    }
+    function loadHidden() {
+      try {
+        const arr = JSON.parse(localStorage.getItem(LS_HIDDEN) || "[]");
+        return Array.isArray(arr) ? arr.filter((id) => typeof id === "string") : [];
+      } catch (e) { return []; }
+    }
+    function allWalls() {
+      const hidden = new Set(loadHidden());
+      const seen = new Set();
+      const out = [];
+      for (const b of BACKDROPS.concat(loadCustom())) {
+        if (!b || !b.id || hidden.has(b.id) || seen.has(b.id)) continue;
+        seen.add(b.id);
+        out.push(b);
+      }
+      return out;
+    }
+    function loadIds(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return fallback.slice();
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return fallback.slice();
+        return arr.filter((id) => typeof id === "string" && /^[a-z0-9][a-z0-9_-]*$/.test(id));
+      } catch (e) { return fallback.slice(); }
+    }
+    let favs = loadIds(LS_FAV, []);
+    let cycleSet = loadIds(LS_CYCLE, BACKDROPS.map((b) => b.id));
+    let cycleOn = false;
+    try { cycleOn = localStorage.getItem(LS_ON) === "1"; } catch (e) {}
+    let cycleTimer = 0;
+    function saveBgLists() {
+      try {
+        localStorage.setItem(LS_FAV, JSON.stringify(favs));
+        localStorage.setItem(LS_CYCLE, JSON.stringify(cycleSet));
+        localStorage.setItem(LS_ON, cycleOn ? "1" : "0");
+      } catch (e) {}
+    }
+    function currentBgId() {
+      try { return localStorage.getItem(LS_BG) || "terrace"; } catch (e) { return "terrace"; }
+    }
+    function glassKnobsFor(id) {
+      const rest = { ior: 1.50, thick: 9, spec: 0.38, band: 22, frost: 0, shine: 0.12, ca: 1.20, tint: [1, 1, 1], tintAmt: 0, fill: 0.12, fillCol: [0.07, 0.08, 0.10] };
+      if (id === "shardhud" || id === "shards" || id === "chrome") {
+        return Object.assign({}, rest, { thick: 7, ior: 1.52, tint: [0.70, 0.78, 0.90], tintAmt: 0.04, shine: 0.22, fill: 0.16, fillCol: [0.18, 0.22, 0.28] });
+      }
+      if (id === "spirit" || id === "wirehud" || id === "nightunnel" || id === "aeroorb" || id === "underpass" || id === "overpass" || id === "jersey" || id === "towerdusk" || id === "baggage" || id === "bluedeck" || id === "duskline" || id === "visorcam" || id === "softcar" || id === "visor2" || id === "vaio2") {
+        return Object.assign({}, rest, { thick: 11, ior: 1.50, tint: [0.12, 0.18, 0.32], tintAmt: 0.06, shine: 0.48, frost: 0 });
+      }
+      if (id === "kabuki" || id === "grind" || id === "nightrace" || id === "ravedisc") {
+        return Object.assign({}, rest, { thick: 6, ior: 1.47, tint: [0.82, 0.94, 1.00], tintAmt: 0.05, shine: 0.26, ca: 0.30 });
+      }
+      if (id === "limeaero" || id === "limehall" || id === "icebar" || id === "frostclub" || id === "mercury" || id === "softgrid") {
+        return Object.assign({}, rest, { thick: 5, ior: 1.46, tint: [0.70, 0.95, 0.45], tintAmt: 0.025, shine: 0.30, frost: 0 });
+      }
+      if (id === "terrace") {
+        return Object.assign({}, rest, { fill: 0 });
+      }
+      return rest;
+    }
+    function applyBackdrop(id, persist) {
+      const walls = allWalls();
+      const item = walls.find((b) => b.id === id) || walls[0] || BACKDROPS[0];
+      document.documentElement.dataset.bg = item.id;
+      document.documentElement.style.setProperty("--ebo-bg", "url(\"" + item.src + "\")");
+      document.querySelectorAll(".bg-thumb").forEach((el) => {
+        el.classList.toggle("active", el.dataset.id === item.id);
+      });
+      const tog = $("bgToggle");
+      if (tog) tog.textContent = item.label;
+      if (window.eboSetBackground) window.eboSetBackground(item.src);
+      if (window.eboSetGlass) window.eboSetGlass(glassKnobsFor(item.id));
+      if (persist !== false) {
+        try { localStorage.setItem(LS_BG, item.id); } catch (e) {}
+      }
+    }
+    window.applyEboBackdrop = applyBackdrop;
+    function sortedWalls() {
+      return allWalls().slice().sort((a, b) => {
+        const af = favs.indexOf(a.id) >= 0 ? 0 : 1;
+        const bf = favs.indexOf(b.id) >= 0 ? 0 : 1;
+        return af - bf;
+      });
+    }
+    function paintCycleHint() {
+      const hint = $("bgCycleHint");
+      const btn = $("bgCycle");
+      if (hint) hint.textContent = cycleSet.length + " in cycle";
+      if (btn) {
+        btn.classList.toggle("active", cycleOn);
+        btn.textContent = cycleOn ? "Cycling" : "Cycle";
+      }
+    }
+    function stopCycle() {
+      if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = 0; }
+    }
+    function startCycle() {
+      stopCycle();
+      if (!cycleOn) return;
+      cycleTimer = setInterval(function () {
+        const pool = cycleSet.filter((id) => allWalls().some((b) => b.id === id));
+        if (pool.length < 2) return;
+        const cur = currentBgId();
+        let i = pool.indexOf(cur);
+        if (i < 0) i = 0;
+        applyBackdrop(pool[(i + 1) % pool.length]);
+      }, CYCLE_MS);
+    }
+    async function removeWall(id) {
+      if (id && id.indexOf("custom-") === 0) {
+        const item = loadCustom().find((b) => b.id === id);
+        const filename = item && item.src ? item.src.replace(/^\/bg\//, "") : (id + ".png");
+        try { await fetch("/bg/" + filename, { method: "DELETE" }); } catch (e) {}
+        try {
+          localStorage.setItem(LS_CUSTOM, JSON.stringify(loadCustom().filter((b) => b.id !== id)));
+        } catch (e) {}
+      }
+      const hidden = loadHidden();
+      if (hidden.indexOf(id) < 0) hidden.push(id);
+      try { localStorage.setItem(LS_HIDDEN, JSON.stringify(hidden)); } catch (e) {}
+      const remaining = allWalls();
+      if (currentBgId() === id) {
+        applyBackdrop((remaining[0] || BACKDROPS[0]).id);
+      }
+      renderWalls();
+    }
+    function renderWalls() {
+      const tray = $("bgTray");
+      if (!tray) return;
+      const cur = currentBgId();
+      tray.innerHTML = sortedWalls().map((b) => {
+        const fav = favs.indexOf(b.id) >= 0;
+        const cyc = cycleSet.indexOf(b.id) >= 0;
+        return "<div class=\"bg-cell\" data-id=\"" + b.id + "\">" +
+          "<button type=\"button\" class=\"star" + (fav ? " on" : "") + "\" data-act=\"fav\" title=\"Favorite\">" + (fav ? "★" : "☆") + "</button>" +
+          "<button type=\"button\" class=\"cyc" + (cyc ? " on" : "") + "\" data-act=\"cyc\" title=\"Include in cycle\">" + (cyc ? "on" : "off") + "</button>" +
+          "<button type=\"button\" class=\"bg-del\" data-act=\"del\" title=\"Remove\">×</button>" +
+          "<button type=\"button\" class=\"bg-thumb" + (b.id === cur ? " active" : "") + "\" data-act=\"pick\" title=\"" + b.label + "\">" +
+          "<img src=\"" + b.src + "\" alt=\"" + b.label + "\" loading=\"lazy\" decoding=\"async\"></button>" +
+          "<span class=\"name\">" + b.label + "</span></div>";
+      }).join("");
+      paintCycleHint();
+    }
+    (function mountBackdropPicker() {
+      const tray = $("bgTray");
+      const menu = $("bgMenu");
+      const toggle = $("bgToggle");
+      const cycleBtn = $("bgCycle");
+      if (!tray || !menu || !toggle) return;
+      applyBackdrop(currentBgId(), false);
+      toggle.onclick = function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        menu.hidden = !menu.hidden;
+        if (!menu.hidden) renderWalls();
+      };
+      if (cycleBtn) {
+        cycleBtn.onclick = function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          cycleOn = !cycleOn;
+          saveBgLists();
+          paintCycleHint();
+          if (cycleOn) startCycle(); else stopCycle();
+        };
+      }
+      tray.addEventListener("click", function (ev) {
+        const btn = ev.target.closest("button");
+        const cell = ev.target.closest(".bg-cell");
+        if (!btn || !cell) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const id = cell.dataset.id;
+        const act = btn.dataset.act;
+        if (act === "pick") applyBackdrop(id);
+        else if (act === "del") removeWall(id);
+        else if (act === "fav") {
+          const i = favs.indexOf(id);
+          if (i >= 0) favs.splice(i, 1); else favs.push(id);
+          saveBgLists();
+          renderWalls();
+        } else if (act === "cyc") {
+          const i = cycleSet.indexOf(id);
+          if (i >= 0) cycleSet.splice(i, 1); else cycleSet.push(id);
+          saveBgLists();
+          renderWalls();
+        }
+      });
+      document.addEventListener("click", function (ev) {
+        if (!menu.hidden && !ev.target.closest(".bg-picker")) menu.hidden = true;
+      });
+      const addBtn = $("bgAdd");
+      const fileIn = $("bgFile");
+      if (addBtn && fileIn) {
+        addBtn.onclick = function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          fileIn.click();
+        };
+        fileIn.onchange = async function () {
+          const file = fileIn.files && fileIn.files[0];
+          fileIn.value = "";
+          if (!file) return;
+          const fd = new FormData();
+          fd.append("file", file);
+          try {
+            const r = await fetch("/bg/upload", { method: "POST", body: fd });
+            const data = await r.json();
+            if (!data || !data.id) return;
+            const custom = loadCustom();
+            custom.push({ id: data.id, src: data.src, label: data.label || data.id });
+            try { localStorage.setItem(LS_CUSTOM, JSON.stringify(custom)); } catch (e) {}
+            renderWalls();
+            applyBackdrop(data.id);
+          } catch (e) {}
+        };
+      }
+      if (cycleOn) startCycle();
+    })();
+        refresh();
+    connectEvents();
+    startPoll();
+  </script>
+  <script type="module" src="/thinking-orb.js"></script>
+  <script src="/liquid-glass.js"></script>
+  <script src="/ui-motion.js"></script>
+  <script>if (window.eboGlassifyAll) eboGlassifyAll(".card"); if (window.eboMotion) { eboMotion.enter(".card"); eboMotion.press(document); }</script>
+  <script>try { var id = localStorage.getItem("ebo-bg") || "terrace"; if (window.applyEboBackdrop) window.applyEboBackdrop(id, false); } catch (e) {}</script>
+</body>
+</html>

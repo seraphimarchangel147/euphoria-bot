@@ -1,0 +1,344 @@
+#euphoria-bot-overlay {
+  --text: #f5f5f7;
+  --muted: #a1a1a6;
+  --dim: #6e6e73;
+  --up: #30d158;
+  --down: #ff453a;
+  --flat: #8e8e93;
+  --warn: #ffd60a;
+  --line: rgba(255,255,255,0.14);
+  --fill: rgba(255,255,255,0.10);
+  --fill-hover: rgba(255,255,255,0.16);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483646;
+  width: 280px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 22px;
+  font: 400 12.5px/1.4 var(--sans);
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  box-shadow: 0 22px 48px rgba(0,0,0,0.40), 0 4px 12px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.28);
+  animation: ebo-in 0.42s var(--ease) both;
+}
+@keyframes ebo-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+#euphoria-bot-overlay.ebo-min {
+  width: auto;
+  padding: 8px 10px;
+}
+#euphoria-bot-overlay.ebo-min #ebo-body { display: none; }
+#euphoria-bot-overlay .ebo-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--muted);
+  cursor: grab;
+  user-select: none;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+#euphoria-bot-overlay.ebo-min .ebo-head { margin-bottom: 0; }
+#euphoria-bot-overlay .ebo-head.ebo-dragging { cursor: grabbing; }
+#euphoria-bot-overlay .ebo-drag { flex: 0 0 auto; }
+#euphoria-bot-overlay .ebo-minbtn {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 99px;
+  font: 600 14px/1 var(--sans);
+}
+#euphoria-bot-overlay .ebo-pill {
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 2px 7px;
+  color: var(--warn);
+  background: rgba(255,214,10,0.10);
+}
+#euphoria-bot-overlay .ebo-bias {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+#euphoria-bot-overlay .ebo-bias.up { color: var(--up); }
+#euphoria-bot-overlay .ebo-bias.down { color: var(--down); }
+#euphoria-bot-overlay .ebo-bias.flat { color: var(--flat); }
+#euphoria-bot-overlay .ebo-reason { margin: 6px 0; color: var(--text); }
+#euphoria-bot-overlay .ebo-meta { color: var(--muted); font-size: 11px; }
+#euphoria-bot-overlay .ebo-actions { display: flex; gap: 6px; margin: 8px 0 4px; flex-wrap: wrap; }
+#euphoria-bot-overlay button {
+  appearance: none;
+  background: var(--fill);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 980px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font: 590 12px/1.1 var(--sans);
+  letter-spacing: -0.01em;
+  transition: background .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease), transform .18s var(--ease);
+}
+#euphoria-bot-overlay button:hover { background: var(--fill-hover); }
+#euphoria-bot-overlay button:active { transform: scale(0.97); }
+#euphoria-bot-overlay button.active {
+  background: rgba(48,209,88,0.16);
+  border-color: rgba(48,209,88,0.34);
+  color: var(--up);
+}
+#euphoria-bot-overlay .ebo-glass-back {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none !important;
+  border-radius: inherit;
+}
+#euphoria-bot-overlay .ebo-glass-shine {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none !important;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.02) 42%, transparent 70%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.45);
+}
+#euphoria-bot-overlay .ebo-glass-front {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  pointer-events: auto;
+  filter: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+#euphoria-helper-layer {
+  position: fixed;
+  z-index: 2147483645;
+  pointer-events: none;
+  overflow: visible;
+}
+#euphoria-helper-layer canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+#euphoria-helper-tile-label,
+#euphoria-helper-tf-strip,
+#euphoria-helper-reason,
+#euphoria-helper-grade {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  max-width: 260px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(13, 15, 18, 0.86);
+  color: #e8edf5;
+  font: 400 11px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  white-space: nowrap;
+}
+#euphoria-helper-tile-label { border: 1px solid #6ea8fe; }
+#euphoria-helper-tf-strip {
+  border: 1px solid #2a3140;
+  color: var(--muted, #c9d4e5);
+  letter-spacing: 0.02em;
+}
+#euphoria-helper-reason {
+  border: 1px solid #3a3140;
+  color: #fea0db;
+  max-width: 280px;
+  white-space: normal;
+}
+#euphoria-helper-tile-label.aside {
+  border-color: #8b95a8;
+  color: #c9d4e5;
+}
+#euphoria-helper-grade {
+  border: 1px solid #2a3140;
+  color: #8b95a8;
+  max-width: 280px;
+  white-space: nowrap;
+}
+#euphoria-bot-overlay .ebo-tf {
+  margin-top: 6px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+#euphoria-bot-overlay .ebo-grade {
+  margin-top: 6px;
+  color: var(--muted);
+}
+#euphoria-bot-overlay /* --- card: verdict, row walk, board, money -------------------------------- */
+#euphoria-bot-overlay .ebo-verdict {
+  font: 650 17px/1.15 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  margin: 2px 0 4px;
+}
+#euphoria-bot-overlay .ebo-verdict.tap { color: #30d158; }
+#euphoria-bot-overlay .ebo-verdict.sit { color: #8e8e93; }
+#euphoria-bot-overlay .ebo-verdict.off { color: #ff453a; }
+
+#euphoria-bot-overlay .ebo-tilt {
+  font: 600 11px/1.35 ui-sans-serif, system-ui, sans-serif;
+  padding: 6px 8px; border-radius: 8px; margin: 0 0 6px;
+  border: 1px solid rgba(255,214,10,0.45);
+  background: rgba(255,214,10,0.14); color: #ffd60a;
+}
+#euphoria-bot-overlay .ebo-tilt.tilted {
+  border-color: rgba(255,69,58,0.5); background: rgba(255,69,58,0.16); color: #ff453a;
+}
+#euphoria-bot-overlay .ebo-tilt[hidden] { display: none; }
+
+#euphoria-bot-overlay .ebo-coil { margin: 6px 0 2px; }
+#euphoria-bot-overlay .ebo-coil-head {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+#euphoria-bot-overlay .ebo-coil-pill {
+  font: 650 9px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: .10em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16); color: #8e8e93;
+}
+#euphoria-bot-overlay .ebo-coil-pill.coiling { color: #6ea8fe; border-color: rgba(110,168,254,0.45); }
+#euphoria-bot-overlay .ebo-coil-pill.loaded { color: #ffd60a; border-color: rgba(255,214,10,0.5); }
+#euphoria-bot-overlay .ebo-coil-pill.expanding { color: #ff453a; border-color: rgba(255,69,58,0.5); }
+#euphoria-bot-overlay .ebo-coil-pill.ready { box-shadow: 0 0 0 2px rgba(255,214,10,0.30); }
+#euphoria-bot-overlay .ebo-coil-head > span:last-child {
+  font: 400 11px/1.3 ui-sans-serif, system-ui, sans-serif; color: #a1a1a6;
+}
+#euphoria-bot-overlay .ebo-coil-meter {
+  height: 4px; border-radius: 99px; overflow: hidden; margin-top: 5px;
+  background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.12);
+}
+#euphoria-bot-overlay .ebo-coil-meter > i {
+  display: block; height: 100%; width: 0%;
+  background: linear-gradient(90deg, #6ea8fe, #ffd60a);
+  transition: width .4s ease;
+}
+
+#euphoria-bot-overlay .ebo-sect {
+  border-top: 1px solid rgba(255,255,255,0.10);
+  margin-top: 8px;
+  padding-top: 6px;
+}
+#euphoria-bot-overlay .ebo-sect-h {
+  font: 600 9px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  color: #6e6e73;
+  margin-bottom: 4px;
+}
+#euphoria-bot-overlay .ebo-dwell {
+  font: 600 13px/1.25 ui-sans-serif, system-ui, sans-serif;
+  color: #f5f5f7;
+}
+#euphoria-bot-overlay .ebo-updown {
+  display: flex; height: 6px; border-radius: 99px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.14); margin: 5px 0 4px;
+}
+#euphoria-bot-overlay .ebo-updown i { display: block; height: 100%; transition: width .3s ease; }
+#euphoria-bot-overlay .ebo-updown i.u { background: #30d158; }
+#euphoria-bot-overlay .ebo-updown i.d { background: #ff453a; }
+
+#euphoria-bot-overlay .ebo-key {
+  margin-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+  padding-top: 6px;
+}
+#euphoria-bot-overlay .ebo-key > summary {
+  cursor: pointer; list-style: none;
+  font: 600 9px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: .10em; text-transform: uppercase; color: #6e6e73;
+}
+#euphoria-bot-overlay .ebo-key > summary::-webkit-details-marker { display: none; }
+#euphoria-bot-overlay .ebo-key > summary:hover { color: #a1a1a6; }
+#euphoria-bot-overlay .ebo-key-row {
+  display: flex; align-items: center; gap: 6px;
+  font: 400 10px/1.5 ui-sans-serif, system-ui, sans-serif;
+  color: #a1a1a6; margin-top: 4px;
+}
+#euphoria-bot-overlay .ebo-key-row i {
+  flex: 0 0 auto; width: 10px; height: 10px; border-radius: 3px;
+}
+#euphoria-bot-overlay .ebo-key-row i.hatch {
+  background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.5) 0 1px, transparent 1px 4px);
+}
+#euphoria-bot-overlay .ebo-key-row i.dot { border: 1px dotted rgba(110,168,254,0.6); }
+#euphoria-bot-overlay .ebo-key-row i.dash { border: 1px dashed rgba(160,160,170,0.7); }
+#euphoria-bot-overlay .ebo-key-note {
+  font: 400 10px/1.4 ui-sans-serif, system-ui, sans-serif;
+  color: #6e6e73; margin-top: 6px;
+}
+
+.ebo-player-edge {
+  margin-top: 7px;
+  color: #6ee7d8;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+#euphoria-bot-overlay .ebo-tilt {
+  margin-top: 7px;
+  padding: 5px 7px;
+  border: 1px solid #ff6b6b;
+  border-radius: 5px;
+  background: rgba(120, 20, 24, 0.3);
+  color: #ff9b9b;
+  font-weight: 750;
+}
+#euphoria-bot-overlay #ebo-projection.low {
+  color: #9aa3b2;
+  border-color: rgba(154, 163, 178, 0.45);
+  filter: grayscale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  #euphoria-bot-overlay { animation: none; }
+  #euphoria-bot-overlay button { transition: none; }
+}
+
+/* Last nine column closes: one glyph per settled 5s window, newest first.
+   Colour is the direction of the row step, so a run of one colour reads as a
+   drift and an alternating strip reads as chop -- the distinction the dwell
+   line alone cannot make. */
+#euphoria-helper-card .ebo-closes {
+  display: flex;
+  gap: 3px;
+  margin: 5px 0 3px;
+}
+#euphoria-helper-card .ebo-closes .c {
+  flex: 1 1 0;
+  text-align: center;
+  font-style: normal;
+  font-size: 9px;
+  line-height: 13px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.35);
+}
+#euphoria-helper-card .ebo-closes .c.up {
+  background: rgba(70, 200, 130, 0.16);
+  color: rgba(120, 235, 175, 0.95);
+}
+#euphoria-helper-card .ebo-closes .c.down {
+  background: rgba(235, 90, 110, 0.16);
+  color: rgba(255, 145, 160, 0.95);
+}
