@@ -1,0 +1,972 @@
+{
+  "captured_utc": "2026-08-17T18:34:55Z",
+  "source_path": "/mnt/c/Users/yvy/euphoria-bot",
+  "source_head": "9250477d8ac822ea1d424750583a021c053512c6",
+  "source_status_sha256": "1ae3f9ad3a64b9684391246d8e26fdc1aefd0fe7f51c207a176f96692450a75d",
+  "excluded": [
+    ".env",
+    ".venv",
+    ".pytest_cache",
+    "__pycache__",
+    "*.pyc",
+    "qa-live-terrace.png",
+    "qa-tape-status.json"
+  ],
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 10693,
+      "sha256": "46200832ed0c65dc6fd7236af99c671db0d9bc0b268cb8d9ad650c283fc35690"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "bytes": 65653,
+      "sha256": "cfb89d5e4a1a097c8e3bbced8d93b9472b8c5c90f42d25cb02649b9cd8d83dc6"
+    },
+    {
+      "path": "extension/bridge.js",
+      "bytes": 5158,
+      "sha256": "b557a8080162e0dd706fd3c7119b51a643d9b3ea820a520fc8eb43319ac33c34"
+    },
+    {
+      "path": "extension/grid-context.js",
+      "bytes": 10657,
+      "sha256": "b0ded95e9fd2445cb8aae8b21b57ff176298916578d5449571cac72551da3e61"
+    },
+    {
+      "path": "extension/liquid-glass.js",
+      "bytes": 5559,
+      "sha256": "3a1a5abac3ebafe784b069cadf41a82a84270fd82efe3810e67626f12e266891"
+    },
+    {
+      "path": "extension/player-advice.js",
+      "bytes": 6730,
+      "sha256": "faf30c84ac7ca065337bf3b18657753ebc118611747e722bb36a4cc8a66d4e60"
+    },
+    {
+      "path": "extension/player-capture.js",
+      "bytes": 10081,
+      "sha256": "9f22854e1b5facac3e22f05f1681aee24b38d97941cd1f0f32159319c4060c41"
+    },
+    {
+      "path": "src/analytics/calibration.py",
+      "bytes": 10313,
+      "sha256": "a7e331d34b2954c19e2eef272fbc4842d56da19a881b9c398b061f70aa67d22f"
+    },
+    {
+      "path": "src/analytics/cell_edge.py",
+      "bytes": 8413,
+      "sha256": "907892e680776b538d1779e926974f8de1b886354137a58ceba88354fb585776"
+    },
+    {
+      "path": "src/analytics/forecast.py",
+      "bytes": 31074,
+      "sha256": "7e8c1d5810e140bf952c7555fc19fb8d4e7ac4e42c1e916e277cc8745b00552b"
+    },
+    {
+      "path": "src/analytics/gridboard.py",
+      "bytes": 18269,
+      "sha256": "c553643d1b40ce45b351596a7ce4f8612d475024edeb0b4bd4efb53580d92ed4"
+    },
+    {
+      "path": "src/analytics/implied.py",
+      "bytes": 9458,
+      "sha256": "90d8507c95f3b51d18e3c3f6969ee20a81a2f8da7f07a0c1341134f07201cda2"
+    },
+    {
+      "path": "src/analytics/player.py",
+      "bytes": 22249,
+      "sha256": "e2014365f521d29ca152f80ac56ccba1d5b1b75f5541a7daaca2b763dd2647a1"
+    },
+    {
+      "path": "src/analytics/pnl.py",
+      "bytes": 21880,
+      "sha256": "a58d1548814ba310c8fd487651871f9068a46ffe6bde8bde6450f2705abc8151"
+    },
+    {
+      "path": "src/analytics/policy.py",
+      "bytes": 16934,
+      "sha256": "acd34a28870b864d937614fe82dc7866183804f688de92f1efeffaa20509d3ac"
+    },
+    {
+      "path": "src/analytics/pressure.py",
+      "bytes": 9929,
+      "sha256": "ef84c505216e40585b6f65c6b3756f6b1f27c3920f5e4c8043efaf2fec4784fc"
+    },
+    {
+      "path": "src/analytics/reachability.py",
+      "bytes": 10249,
+      "sha256": "9426c0144a900b958a283d0dccf89d649933f14b46cdf40d725a815b7a01658c"
+    },
+    {
+      "path": "src/analytics/regime.py",
+      "bytes": 4234,
+      "sha256": "90420ad24570b431bf1524fac40933681a4a14fa02a8c92da6013406c8213447"
+    },
+    {
+      "path": "src/analytics/rolling_regime.py",
+      "bytes": 5876,
+      "sha256": "db4f10752e3293272857364a83485e5ac292f6ccb0e4cc1efc5682e0394e3ada"
+    },
+    {
+      "path": "src/analytics/selection.py",
+      "bytes": 6390,
+      "sha256": "8b756a6903d1701a3955d36c7099b7f0aa2357e6926a6f3e44f135f3bda897cc"
+    },
+    {
+      "path": "src/analytics/tilt.py",
+      "bytes": 6883,
+      "sha256": "5cc298bfeaf017b3dea7872faf943c8161419f053e2d3398ef1adfa9d13e2663"
+    },
+    {
+      "path": "src/analytics/traversal.py",
+      "bytes": 17603,
+      "sha256": "c4eefee9fb889a9e2585cef86fbae5b3d118f78a31434ecbdeaed8718375e957"
+    },
+    {
+      "path": "src/control/static/bg/360den.png",
+      "bytes": 2470538,
+      "sha256": "23a4ad9d5219528c0e17d09d6951cc5459cb66d4df85db7796830be94826aba8"
+    },
+    {
+      "path": "src/control/static/bg/aero.png",
+      "bytes": 2042598,
+      "sha256": "2ceb4ccde3942808d99c140c4bbd7444764d8eaec2a6c0c600f07e3d55e62ed9"
+    },
+    {
+      "path": "src/control/static/bg/aeroorb.png",
+      "bytes": 2303423,
+      "sha256": "396b6ee3f9516b80180fb91da39e3d796dc7ca5d6f67ffdb25528c97ff6d771b"
+    },
+    {
+      "path": "src/control/static/bg/alley.png",
+      "bytes": 2053580,
+      "sha256": "c56fc7e82d7a47f96c63f88f1079a1ff8ffd221e426c4d66bc9d70126a445fa2"
+    },
+    {
+      "path": "src/control/static/bg/baggage.png",
+      "bytes": 2593957,
+      "sha256": "e3880e33932891e086e056775d0982cd23597cacdfd86ad487e40706287e032f"
+    },
+    {
+      "path": "src/control/static/bg/bluedeck.png",
+      "bytes": 2664070,
+      "sha256": "eb1677f0f466d1da6f7d50025e5dd5f38b2484913d131e10fe53f1f3fe6a1358"
+    },
+    {
+      "path": "src/control/static/bg/candybar.png",
+      "bytes": 2168585,
+      "sha256": "6ccbd9d8ec0826d8392a1068454ce4379eb5d54f7c047bbe78837abfbe11fe7a"
+    },
+    {
+      "path": "src/control/static/bg/chrome.png",
+      "bytes": 2537005,
+      "sha256": "b0f97bfa5cd5999b026cd320609fd8746eebe5a7f492ce03960ed3f7a0e1966a"
+    },
+    {
+      "path": "src/control/static/bg/coast.png",
+      "bytes": 2354093,
+      "sha256": "82732da0b6c4585196c43902fbbeea00ff6107aa22176eb6c85d7b0b6e385b8f"
+    },
+    {
+      "path": "src/control/static/bg/courtyard.png",
+      "bytes": 2982273,
+      "sha256": "53aa2758b6b0bf64e6b951d018ba48f79c2b51528b4523291d77cf94826f0ec9"
+    },
+    {
+      "path": "src/control/static/bg/crtden.png",
+      "bytes": 2261709,
+      "sha256": "bb09a21b750ce4380df7249ed8d10973f573abf76a0fd48aa3da8ec9bbb48807"
+    },
+    {
+      "path": "src/control/static/bg/crunch.png",
+      "bytes": 2547856,
+      "sha256": "e044f3b9e4bf4d34b7a399b2e8fd14326ca8f4ec63d1e4ed11eaaeb4d34c08b0"
+    },
+    {
+      "path": "src/control/static/bg/depart.png",
+      "bytes": 2562637,
+      "sha256": "6cbc98a6568ab87c7d75608d26177aecc39d5c03b1722fdb4238fdf9f27a3f5d"
+    },
+    {
+      "path": "src/control/static/bg/diorama.png",
+      "bytes": 2371888,
+      "sha256": "e450761f4ada228978a29846cefc33de622435c0f3f69840ca9c4108925975b5"
+    },
+    {
+      "path": "src/control/static/bg/diorama2.png",
+      "bytes": 2405378,
+      "sha256": "ece04eba90414b780d890f39280154b4dd3a515a1f75a5c93ed2e294606712e2"
+    },
+    {
+      "path": "src/control/static/bg/dualtone.png",
+      "bytes": 2413927,
+      "sha256": "cb515b7417abb4017b2e4f479582221cbc719554dce30ba3d0cc46e989827e93"
+    },
+    {
+      "path": "src/control/static/bg/duskline.png",
+      "bytes": 2427792,
+      "sha256": "c86eb552ad45ca221799c1876ff9f88bcb50329f64708511b9d32215e687ae82"
+    },
+    {
+      "path": "src/control/static/bg/frostclub.png",
+      "bytes": 2792930,
+      "sha256": "eaf6e047f884a83db2d67f3d13cc996f90c5f6452532a98079d850df68ca6ebd"
+    },
+    {
+      "path": "src/control/static/bg/greenplatform.png",
+      "bytes": 2938310,
+      "sha256": "a459729b5dc6b69c5fb1fd2afeceac433ae32dcd8d48b37e77b187b77760daa4"
+    },
+    {
+      "path": "src/control/static/bg/grind.png",
+      "bytes": 2417077,
+      "sha256": "b1f8eafcf11fa3b3b91acdef040d91704e70efc8be2b36eea7cad115826f2a01"
+    },
+    {
+      "path": "src/control/static/bg/hub.png",
+      "bytes": 3172193,
+      "sha256": "c55191b0963d5ca2e8169f92e982582964f3510699595bf48a093afaf94fd913"
+    },
+    {
+      "path": "src/control/static/bg/icebar.png",
+      "bytes": 2923151,
+      "sha256": "c68d8f825be8239af279f6ea1ccdc847c3517a29673e02fc26d70a9619af7c58"
+    },
+    {
+      "path": "src/control/static/bg/jersey.png",
+      "bytes": 2730103,
+      "sha256": "a452e34186d1e5a6982ed636cf2572ccc15fa6c0b5279444f55452f4bd1aa389"
+    },
+    {
+      "path": "src/control/static/bg/kabuki.png",
+      "bytes": 2810950,
+      "sha256": "13916c550834da7e08a3e018d6eb3c6d3e0c4a2243c92b39da020f00d84aee4a"
+    },
+    {
+      "path": "src/control/static/bg/limeaero.png",
+      "bytes": 1917176,
+      "sha256": "2ca43ded4413decefc6fab66ce9e9818cd16d973a6503e64b780cedb7806a5bc"
+    },
+    {
+      "path": "src/control/static/bg/limehall.png",
+      "bytes": 2246919,
+      "sha256": "ec97d34f5d113d579246c3bf587493c405d3bd3a2f58ae3dcce1cd9379a1358a"
+    },
+    {
+      "path": "src/control/static/bg/liminal.png",
+      "bytes": 2541901,
+      "sha256": "f113e463f8aa373da89de9763142f52c6177f5d7e43e6ca88788c4b3737a7682"
+    },
+    {
+      "path": "src/control/static/bg/loft.png",
+      "bytes": 2303622,
+      "sha256": "b495701c13c5655586200a99a2ac8a547057e59f2bc4412d94aef8bc61aab834"
+    },
+    {
+      "path": "src/control/static/bg/lounge.png",
+      "bytes": 1919808,
+      "sha256": "39cadab4738877f2c75d9c8b316b67307fcca552ffe5eeac51469e009d9508f7"
+    },
+    {
+      "path": "src/control/static/bg/magalley.png",
+      "bytes": 2655614,
+      "sha256": "992eae4c87f56186f3c5d96075d26973c15bd499a457c27e9651f674b60d918d"
+    },
+    {
+      "path": "src/control/static/bg/magazine.png",
+      "bytes": 2683937,
+      "sha256": "91f07d36afeeef375d6cd4637719034be6757491a3dd78b14f9dacfbc05a9ecc"
+    },
+    {
+      "path": "src/control/static/bg/mercury.png",
+      "bytes": 2259451,
+      "sha256": "ab90558f6c3a7d61d9d709b65b07c55a8cba0fb75b211ce72192c84c272db9f9"
+    },
+    {
+      "path": "src/control/static/bg/momentum.png",
+      "bytes": 1876286,
+      "sha256": "73b864b409e6c531b1dece6cc245c77616b195c32614967fcba1e69756cf31a4"
+    },
+    {
+      "path": "src/control/static/bg/neon.png",
+      "bytes": 2155549,
+      "sha256": "96a5a4a4d263beb79c30c9b9b569cdc60287cce800e0522208b05d60514f2715"
+    },
+    {
+      "path": "src/control/static/bg/nightrace.png",
+      "bytes": 2726436,
+      "sha256": "852790dec4020ef2b82099f702fa269312896f65422a84bbdf40ae7a1faeb66e"
+    },
+    {
+      "path": "src/control/static/bg/nightunnel.png",
+      "bytes": 2253294,
+      "sha256": "56773b6aa01c7d53cae1b15157f4401369c78a48cbc4503e3abd3a55997110e0"
+    },
+    {
+      "path": "src/control/static/bg/orangebox.png",
+      "bytes": 2649483,
+      "sha256": "28b549958c2d477ae252945c10fbc6b83311acf4323a9ddde4c11d0ed40f44be"
+    },
+    {
+      "path": "src/control/static/bg/orbdesk.png",
+      "bytes": 2054937,
+      "sha256": "0b1072d0714d69ef57dc53f535770ba3a34008bf77d677c2b97c9b1b1ff3856e"
+    },
+    {
+      "path": "src/control/static/bg/overpass.png",
+      "bytes": 2563307,
+      "sha256": "b64d66e5c7b4578dbfcdfa6f6f1405f772d4abefe427aee0be40d01652b17d49"
+    },
+    {
+      "path": "src/control/static/bg/platform.png",
+      "bytes": 2142034,
+      "sha256": "edd1f4cae6d9f5f3594e0ca858744d87fbfa8d830efdfd2e44db63eb2ac76df4"
+    },
+    {
+      "path": "src/control/static/bg/plaza.png",
+      "bytes": 2484002,
+      "sha256": "8670083edc5e6a86f200afc65d34d7e55a93bce8df96d17dafb91846b5ab14aa"
+    },
+    {
+      "path": "src/control/static/bg/ps2face.png",
+      "bytes": 3126181,
+      "sha256": "876b72e133c2e93730e9c4d9b10a65543151389f7b1ad464ac1175dc55aba86d"
+    },
+    {
+      "path": "src/control/static/bg/ravedisc.png",
+      "bytes": 2584188,
+      "sha256": "4a2073511c3f9352e33e9fa36cd9219ec548d1d023a69549edc6ddf1f6336c12"
+    },
+    {
+      "path": "src/control/static/bg/ref-platform.png",
+      "bytes": 108199,
+      "sha256": "5edc0845a107ffc2d85a0fd6573787801c0260c07379dbd5482da87e8f19f4b4"
+    },
+    {
+      "path": "src/control/static/bg/ref-ps2.png",
+      "bytes": 243751,
+      "sha256": "71576fa5749827cdee59f2122e611eec0b1c3ac7d4880111885af45b8d6155c3"
+    },
+    {
+      "path": "src/control/static/bg/ref-softclub.png",
+      "bytes": 215866,
+      "sha256": "fdb51c9967c88d68189277d19cdd95af1c23fa3b5ae791acfcce5602df272d49"
+    },
+    {
+      "path": "src/control/static/bg/ref-tilt.png",
+      "bytes": 213817,
+      "sha256": "84baefdf89d8fe5aa02c96aec44bfc9c7c13e8b55243eff197c7e953da85cb8e"
+    },
+    {
+      "path": "src/control/static/bg/ref-vaio.png",
+      "bytes": 288940,
+      "sha256": "3179bea7084361c81dea34366b6480720981a0a07293003c62a675b8dd6a635b"
+    },
+    {
+      "path": "src/control/static/bg/ref-visor.png",
+      "bytes": 312446,
+      "sha256": "5e970ee499b7d8ad5a9aaaf798f393a9eebe778238cdc11fd4246e69dd86597c"
+    },
+    {
+      "path": "src/control/static/bg/selphie.png",
+      "bytes": 2617378,
+      "sha256": "a798920b9f7949edb86cc8a0d16164e5fef7aff232fc8fd4d6b6580e867bc5c5"
+    },
+    {
+      "path": "src/control/static/bg/shardhud.png",
+      "bytes": 2131086,
+      "sha256": "fb44da622bf0674238bc89959cdbba72d94fa5f4e22a5d093f299b0a43157a32"
+    },
+    {
+      "path": "src/control/static/bg/shards.png",
+      "bytes": 2650040,
+      "sha256": "bb02cd2b0c7f22c3bbd60e3fb4d4d20f118d13a9ad28ba0369f3331045212ce3"
+    },
+    {
+      "path": "src/control/static/bg/shelves.png",
+      "bytes": 2444769,
+      "sha256": "a0467f125e5b5ed2b158b6c92ad7b062f70e25cc30b7db0ac348a285f4ad90c9"
+    },
+    {
+      "path": "src/control/static/bg/shop.png",
+      "bytes": 2899031,
+      "sha256": "be35d83adfd7c7a79380d2c32fe595fad1d88f1f75aac002148a573bbc84d4ce"
+    },
+    {
+      "path": "src/control/static/bg/showroom.png",
+      "bytes": 2528944,
+      "sha256": "52a973cd1f8ca62ca2ca6a36a7f54bd1d6a184a797e5825726adf6e5edf566b4"
+    },
+    {
+      "path": "src/control/static/bg/softcar.png",
+      "bytes": 3037091,
+      "sha256": "91cb19c73e1c69ff58ab313ad471e39ba7c2f53dde45417d414f0c075c11cfa1"
+    },
+    {
+      "path": "src/control/static/bg/softclub.png",
+      "bytes": 1996082,
+      "sha256": "fa56d93fcd9fbffa2cb393a4926ec34aa82146e165a44202d4767963fcfd55ad"
+    },
+    {
+      "path": "src/control/static/bg/softclub2.png",
+      "bytes": 2746472,
+      "sha256": "cdf188017d5d1fe1638e9b980beb3048a2d95ccc6017bf024c909309be5786bc"
+    },
+    {
+      "path": "src/control/static/bg/softgrid.png",
+      "bytes": 2025375,
+      "sha256": "66a30621f4218ea88175cc767dcd4348addd41b4f8baddbea35e6fa9067fd7f9"
+    },
+    {
+      "path": "src/control/static/bg/spirit.png",
+      "bytes": 2584650,
+      "sha256": "80d9fdb2fdd61ddf0fd7e0bbc5297d1b8d0aef405de4ebfb8f548787c1637a4e"
+    },
+    {
+      "path": "src/control/static/bg/stools.png",
+      "bytes": 1957692,
+      "sha256": "ca3d06dd13134c1b4147482337220da88390622745b84bad802be09e06529a99"
+    },
+    {
+      "path": "src/control/static/bg/techno.png",
+      "bytes": 1873964,
+      "sha256": "63a5042a1c64a3ad657e6abad4b7e9d784c517ab94b81defdbdfd98d10a6de7a"
+    },
+    {
+      "path": "src/control/static/bg/terrace.png",
+      "bytes": 3053699,
+      "sha256": "964a2628fa48f4075fee59abfce673374641670e6a7a7dba1eb08e4e7248b47a"
+    },
+    {
+      "path": "src/control/static/bg/towerdusk.png",
+      "bytes": 2611766,
+      "sha256": "e5b5f9af5c44af131839328adc827a9b3412f782764a52180242ca88b34cf0d8"
+    },
+    {
+      "path": "src/control/static/bg/tunnel.png",
+      "bytes": 1472550,
+      "sha256": "d93cfa1913f5a135fd385f311d5a32536be40b6323f2b37f56955bd667cec433"
+    },
+    {
+      "path": "src/control/static/bg/underpass.png",
+      "bytes": 2525780,
+      "sha256": "341202a3972d2a589213afa3ed207bf6988ea85b8f654b2369e0b55adc6b7f80"
+    },
+    {
+      "path": "src/control/static/bg/vaio2.png",
+      "bytes": 3023207,
+      "sha256": "e8fe739447d831530ac44b6c2a69c29748be30ddaf89eb761feb3da8b5790836"
+    },
+    {
+      "path": "src/control/static/bg/viewcomic.png",
+      "bytes": 2611491,
+      "sha256": "b0bd6cd10f8d0b9cdb8a87120e0bf8e5c112a5aa0762691bb9589a4ed6bce4fc"
+    },
+    {
+      "path": "src/control/static/bg/visor2.png",
+      "bytes": 2928527,
+      "sha256": "81d62075f7effd5f6dbea079e82b41a4290dfe7ac4954fc1141b8d33a8dffafa"
+    },
+    {
+      "path": "src/control/static/bg/visorcam.png",
+      "bytes": 2659361,
+      "sha256": "9f85aa5ba2c8c740099025ea028130d6195c1986f9842e352d0adff3cdae8f25"
+    },
+    {
+      "path": "src/control/static/bg/waffle.png",
+      "bytes": 2266886,
+      "sha256": "2347eb7384b85248db13b85eda4da899fd7ce8186a50abce7dd5a6b9a6a4e4d3"
+    },
+    {
+      "path": "src/control/static/bg/wirehud.png",
+      "bytes": 2158765,
+      "sha256": "e1db67e32f2ff98180ef88370a51c259944a55a0edae756dde274465d44da14f"
+    },
+    {
+      "path": "src/control/static/dashboard-art-v3.png",
+      "bytes": 2982273,
+      "sha256": "53aa2758b6b0bf64e6b951d018ba48f79c2b51528b4523291d77cf94826f0ec9"
+    },
+    {
+      "path": "src/control/static/dashboard-bg-selphie.png",
+      "bytes": 2617378,
+      "sha256": "a798920b9f7949edb86cc8a0d16164e5fef7aff232fc8fd4d6b6580e867bc5c5"
+    },
+    {
+      "path": "src/control/static/dashboard-bg.png",
+      "bytes": 3053699,
+      "sha256": "964a2628fa48f4075fee59abfce673374641670e6a7a7dba1eb08e4e7248b47a"
+    },
+    {
+      "path": "src/control/static/engine.es.js",
+      "bytes": 19146,
+      "sha256": "fb2af5ebf509be92cc6d34dca6292f1139ec3889e180e44e7292155426f0d19a"
+    },
+    {
+      "path": "src/control/static/liquid-glass.js",
+      "bytes": 27759,
+      "sha256": "6fb3763b2804e247f34c589ad57d1cc75076c0d3b8372b64fcec68c79755eb1c"
+    },
+    {
+      "path": "src/control/static/money-man-avatar.png",
+      "bytes": 55227,
+      "sha256": "dc39fcacf99f54df881837ddb79f19bc6e4d4535afd76c8d4021ec7a11e05705"
+    },
+    {
+      "path": "src/control/static/thinking-orb.js",
+      "bytes": 9148,
+      "sha256": "eab51066991e05c17089de82eea0f664e2f6a5706b04626198c33523856188b1"
+    },
+    {
+      "path": "src/control/static/ui-motion.js",
+      "bytes": 1743,
+      "sha256": "e4427e781058d4decf7326a2a96295a9b81e2086fde4a5a639148d08f127849c"
+    },
+    {
+      "path": "src/monitor/wallet.py",
+      "bytes": 7478,
+      "sha256": "ff926541d54a4f588e4747ac9331e966a2340b948cf5885e0ac19bf299378d83"
+    },
+    {
+      "path": "tests/conftest.py",
+      "bytes": 1970,
+      "sha256": "ae3d18a175ff02d92fc51ffeea4f388dd8d6c125bac17949ab3a22f491399935"
+    },
+    {
+      "path": "tests/test_bankroll_persistence.py",
+      "bytes": 5606,
+      "sha256": "e9a06d25537cd45dab27df0a8623f54f10257eeaca03e7f6aa6f239eb59fb4dd"
+    },
+    {
+      "path": "tests/test_cell_edge.py",
+      "bytes": 9695,
+      "sha256": "8b369eb23e4090106f0178642e250c6b4cae2c8595dab1aebd36d0be5eed26ff"
+    },
+    {
+      "path": "tests/test_clock_alignment.py",
+      "bytes": 9901,
+      "sha256": "3363d21fda8ae8031da73664999607878dbd2b39290e386fccd89a8d4702a6fa"
+    },
+    {
+      "path": "tests/test_closes.py",
+      "bytes": 5997,
+      "sha256": "d7e48dda4830b13b4b37a2811ada3c489d4f0190f6baf97b4fd176087112ca45"
+    },
+    {
+      "path": "tests/test_edge_integrity.py",
+      "bytes": 8686,
+      "sha256": "bd8c6c32ba50ec4a0180835f107208ff33bd6b45a4d7b1c04ff8498b4578792c"
+    },
+    {
+      "path": "tests/test_experiment.py",
+      "bytes": 3934,
+      "sha256": "5026467be33058cc432837923ab1cd399e7881d52daadb91fb9088430cbb9e08"
+    },
+    {
+      "path": "tests/test_forecast.py",
+      "bytes": 6973,
+      "sha256": "73cd055365bbfcc676c03e6519174941b99917f75c3765b862abcef999b07a81"
+    },
+    {
+      "path": "tests/test_grid_supply.py",
+      "bytes": 5678,
+      "sha256": "5b9b64a2ecc30359e86c7eb292fd5468e82f3cfd39110a86e4128c91254c1efb"
+    },
+    {
+      "path": "tests/test_implied.py",
+      "bytes": 11289,
+      "sha256": "00f3177817ac71d773649e50926ea941b85078e7ff5c434eb3705e518f7db0ae"
+    },
+    {
+      "path": "tests/test_mean_reversion.py",
+      "bytes": 7688,
+      "sha256": "52880db7b6e934cb3fa5881667a6ed112524f074705394732741abb30d924a3a"
+    },
+    {
+      "path": "tests/test_player.py",
+      "bytes": 17655,
+      "sha256": "a7b91c280f8d9381ca11d2a57a66e19f63356a247cc08a5d00672832e0f1bb5a"
+    },
+    {
+      "path": "tests/test_pnl.py",
+      "bytes": 18376,
+      "sha256": "caf54ede68bb442a095466540c01ea0b40825e6591067ba062520f73a92fc435"
+    },
+    {
+      "path": "tests/test_policy.py",
+      "bytes": 12325,
+      "sha256": "f524c025d893e148e00231ec1ad9ddd546da47d22fbdf1c8f104762edf40d183"
+    },
+    {
+      "path": "tests/test_pressure.py",
+      "bytes": 7550,
+      "sha256": "5bb36ebb407409fa27620f29d834fecabde3bda53a940ba790fdaf543dad0461"
+    },
+    {
+      "path": "tests/test_quote_grid.py",
+      "bytes": 10781,
+      "sha256": "132697b08ec0d63ec22c6b2490955d66db5099c3ee35e6784f56d8dac5f83ce5"
+    },
+    {
+      "path": "tests/test_quote_labels.py",
+      "bytes": 5049,
+      "sha256": "7b510a0d94629dd89d4e29f663549d98a52c515732b19ca0302ff7190c8ee05c"
+    },
+    {
+      "path": "tests/test_reachability.py",
+      "bytes": 14780,
+      "sha256": "4e2cd32cbbfbe608967acff08bc2f486202a887c6ce4c4ad3273172ec9454dd2"
+    },
+    {
+      "path": "tests/test_regime.py",
+      "bytes": 5214,
+      "sha256": "f858808c2c7bff2f0d4ab2fe1aa536e90a347a076cea6a8a4c8059ccd3fe4e3f"
+    },
+    {
+      "path": "tests/test_regime_edge.py",
+      "bytes": 7485,
+      "sha256": "0925fbe8b396b1fb2ee1c402a667841e3d62c21bb031dc3b35ca12ac965e5a43"
+    },
+    {
+      "path": "tests/test_rolling_regime.py",
+      "bytes": 6411,
+      "sha256": "f90d61b1e4fb2224dbf81be341f1dc6fa417672ec7437a6ad812757bd35737b4"
+    },
+    {
+      "path": "tests/test_selection.py",
+      "bytes": 6125,
+      "sha256": "758e4054cc7316cd327036c59e618542607ac52a2bfede38266abad9838ce780"
+    },
+    {
+      "path": "tests/test_shadow.py",
+      "bytes": 8392,
+      "sha256": "39d997b0d1ae82cb283b4e10cbabd26304797dadc9b482be606fa5145aa89f65"
+    },
+    {
+      "path": "tests/test_smoothing.py",
+      "bytes": 11616,
+      "sha256": "362583726f8ec9b6fe046c611a4ec6c06adf1d4e9c564f35d07d5f87579c808c"
+    },
+    {
+      "path": "tests/test_tilt.py",
+      "bytes": 4341,
+      "sha256": "64124084c62e1db86c7f6bbd4aec6897b433e2784782a41c67a47f6b48f59563"
+    },
+    {
+      "path": "tests/test_traversal.py",
+      "bytes": 11061,
+      "sha256": "19fdd2ef632b1d03f65474c0b62c5bacdf88a136f2c50735504cf642d6caf7a1"
+    },
+    {
+      "path": "tests/test_wallet.py",
+      "bytes": 6099,
+      "sha256": "3d907d4ffe348dfb63f22f6791d41ab0aa38d76baf34cbaa0e5803abfd3895f7"
+    },
+    {
+      "path": "tests/test_wallet_room.py",
+      "bytes": 3403,
+      "sha256": "bd99bea859dce2c99f036bf1b39b31ef1d527f4b3a3f902ab81ff4cd90ccd9cd"
+    },
+    {
+      "path": "tools/forward_test.py",
+      "bytes": 5051,
+      "sha256": "f468acf85880736b86a62721ddacbd8d6fd28d8b6c55b29495b8d772dd4a5fcc"
+    },
+    {
+      "path": ".env.example",
+      "bytes": 936,
+      "sha256": "3df5f6f54f0abebca05ad3a74eb9c48e555e73948f203a51544bc729a9f64ced"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 119,
+      "sha256": "8ccb734b5424efb495a7b3531c61cf4fb6b0e6ed4383a28ce46296fa1afce94b"
+    },
+    {
+      "path": "README.md",
+      "bytes": 6223,
+      "sha256": "ad22c783d823eabbda393b36c871ce7ac33479906bc002621c9d44c5da078031"
+    },
+    {
+      "path": "config/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "config/settings.py",
+      "bytes": 6519,
+      "sha256": "cd2147b001d4ea62601d74ed49d11462c476e80b10723604ac3ebc073e4d27b6"
+    },
+    {
+      "path": "docs/AUTH.md",
+      "bytes": 5908,
+      "sha256": "997254122c08835370dc1c1e37f3513d6cbefee930db4c51efda10b45731876c"
+    },
+    {
+      "path": "docs/REVERSE_ENGINEERING.md",
+      "bytes": 5927,
+      "sha256": "da7efcab4e4e6ec1a707ab697955c60f154a83646e0ca141c3ce4e9d413a69f6"
+    },
+    {
+      "path": "extension/README.md",
+      "bytes": 2278,
+      "sha256": "0abedf89bb06f0f0a09e3ad448e8bd3d308f25068d0c335f8594cc9c5b4b7425"
+    },
+    {
+      "path": "extension/background.js",
+      "bytes": 6155,
+      "sha256": "277cef9bff5b91b8de9cc0dc644d0ed9decdc15c40fff27e75cc24e7f53c4d09"
+    },
+    {
+      "path": "extension/content.js",
+      "bytes": 25302,
+      "sha256": "cd066aa7c1c3b3c36ea1553e8ae98988b35b417985c3bec7cbbfefbd3eefbfc7"
+    },
+    {
+      "path": "extension/inject.js",
+      "bytes": 57307,
+      "sha256": "32ce39768c931a81d7e64640ec492a512cfedabaf5146316b55cb96377d0ef3b"
+    },
+    {
+      "path": "extension/manifest.json",
+      "bytes": 1808,
+      "sha256": "be5d966e4680f2357471c2ec0933d804422bf31c579c4f80d0b36bb44773b243"
+    },
+    {
+      "path": "extension/overlay.css",
+      "bytes": 10932,
+      "sha256": "7142eec686268e26262430dd1d2343e2bf6ff084a3e94360959dce8f753729ef"
+    },
+    {
+      "path": "pyproject.toml",
+      "bytes": 394,
+      "sha256": "4e3887e2f35387d1b91b02e9e63e447f6648e64d75c470aacb15b2577127bb4d"
+    },
+    {
+      "path": "scripts/doctor.py",
+      "bytes": 4978,
+      "sha256": "b9fed61b3c397da6fd8691d580cad12f769bdb23d4a7f1497fe87f191eaac858"
+    },
+    {
+      "path": "src/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/analytics/__init__.py",
+      "bytes": 821,
+      "sha256": "56d2cefbe3e0f35c79b69dca9664c0b4a7bbe5fc53e6001d0d34859a048471cd"
+    },
+    {
+      "path": "src/analytics/lesson.py",
+      "bytes": 10300,
+      "sha256": "7bee9b43e5b71eec57177c103e79d437097a51ea11cda0e12b8b3dda4f538929"
+    },
+    {
+      "path": "src/analytics/ohlc.py",
+      "bytes": 2977,
+      "sha256": "a108602d8eca97f4e4434c3fc4941cf9971c1f7163f99fe5a1251717f1f96e7b"
+    },
+    {
+      "path": "src/analytics/setups.py",
+      "bytes": 21806,
+      "sha256": "74ce39fd3562ee5274f71a71f36de73c248a7478809d7dd9aa8d1f81c65f5cb5"
+    },
+    {
+      "path": "src/analytics/signal.py",
+      "bytes": 42268,
+      "sha256": "3af1457f6fa481ab981a530373b50b5097fc35dd5584ee43cd0c3e168631705c"
+    },
+    {
+      "path": "src/analytics/timeframes.py",
+      "bytes": 6323,
+      "sha256": "f43aa4db7e01b2b00ba6c7ee73b190929cf3d390983e6dfdc0e5959001a8df8c"
+    },
+    {
+      "path": "src/auth/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/auth/privy.py",
+      "bytes": 6965,
+      "sha256": "7eb8843d0d4c1f554f163450af5123714a1b2f098b11f3a71498470f916608c3"
+    },
+    {
+      "path": "src/auth/session.py",
+      "bytes": 7265,
+      "sha256": "b3b20887521ae28edb89889d676cd898eff98f6855d84f0900893cceebf147f4"
+    },
+    {
+      "path": "src/control/__init__.py",
+      "bytes": 190,
+      "sha256": "8aa5d5a67b368c8451dd92a85c469be60b6cd5c1010a49a69697877ba36e0c86"
+    },
+    {
+      "path": "src/control/__main__.py",
+      "bytes": 65,
+      "sha256": "f2e467849fb2394d8f9d120d8f1dc35646ef3703f27b3b9a0bc3b2391370a5cd"
+    },
+    {
+      "path": "src/control/grid_map.py",
+      "bytes": 4301,
+      "sha256": "eb31060ea2abe302593bf2e935c6a9265a0778f45629a80ceb5c15e01045ef7c"
+    },
+    {
+      "path": "src/control/overlay_rules.py",
+      "bytes": 659,
+      "sha256": "72e20ce53ff721e101348a4b5155d2f4ccc7ef62df4d9ee68299b9a56757e8a1"
+    },
+    {
+      "path": "src/control/room.py",
+      "bytes": 78011,
+      "sha256": "cd94f55d123f59619b4b4918f809a846fda1a312158dabc4fb38291c12bc5d28"
+    },
+    {
+      "path": "src/control/server.py",
+      "bytes": 19698,
+      "sha256": "cb499e18a375ed583456a22efae587c912c16fafd720ecb76febc21ce2ecb06f"
+    },
+    {
+      "path": "src/control/static/index.html",
+      "bytes": 116215,
+      "sha256": "0596c16850e3ae86cf4655a13449408d5e51fdf0c41ea54e0abacf9051105f89"
+    },
+    {
+      "path": "src/monitor/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/monitor/oracle.py",
+      "bytes": 1939,
+      "sha256": "f7f4afd2e4b7aacd63e61038b454df9ca6eb100100e1baf4fa6f1295f2e377f0"
+    },
+    {
+      "path": "src/monitor/price_monitor.py",
+      "bytes": 2581,
+      "sha256": "e1e8e62cdd02b7b5eb6dcd9d4bffd8a7b92510b0855d1ee04834c15b76b0d48e"
+    },
+    {
+      "path": "src/trader/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/trader/api.py",
+      "bytes": 4927,
+      "sha256": "fba75476265931c10b2f3459b5226bf41b7b10991314dc15965ef7cee08cd411"
+    },
+    {
+      "path": "src/trader/auto_trader.py",
+      "bytes": 6426,
+      "sha256": "7fea895668d9030370904ef8d2328a35a70e36103c956c07bdd4dd2bea63243f"
+    },
+    {
+      "path": "src/trader/eip712.py",
+      "bytes": 7311,
+      "sha256": "a3a1e5ab508883fcfcc381ce4a73b509722b7e1c72425fe05725c6a122bc3fd0"
+    },
+    {
+      "path": "src/trader/risk.py",
+      "bytes": 2256,
+      "sha256": "6ec6db71b14be1d0c4403733c6cf2b5d25c2fb1e4e327d211c86200749a6396a"
+    },
+    {
+      "path": "src/ui/__init__.py",
+      "bytes": 66,
+      "sha256": "66a68321b051c2b259a44a288c5838d1d5c273923ca0d69f690c47c23e333604"
+    },
+    {
+      "path": "src/ui/__main__.py",
+      "bytes": 65,
+      "sha256": "f2e467849fb2394d8f9d120d8f1dc35646ef3703f27b3b9a0bc3b2391370a5cd"
+    },
+    {
+      "path": "src/utils/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/utils/http.py",
+      "bytes": 3122,
+      "sha256": "be859db90070fb2384c2e142c77ef581246ccbc81cf4faecc1f2e2bd54e7d277"
+    },
+    {
+      "path": "src/utils/proxy.py",
+      "bytes": 2571,
+      "sha256": "6ed33095aabddcf0d5b12942e1ebc9abba64c8ccb3827b5becd642dd0f85ef05"
+    },
+    {
+      "path": "tests/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/test_api.py",
+      "bytes": 1970,
+      "sha256": "d6253cdbf18bbeb9607f8145817163851233975c5616bb4d39652b505b10e41d"
+    },
+    {
+      "path": "tests/test_auth.py",
+      "bytes": 3696,
+      "sha256": "307f2aef731aaae80ffcdeb43468c7b981fa9b889e0b621d96982e041b2340d9"
+    },
+    {
+      "path": "tests/test_control.py",
+      "bytes": 18594,
+      "sha256": "f1a34453cb5c8370f23c567c9c6d0d372d94449f22916db32c8431f2095458ff"
+    },
+    {
+      "path": "tests/test_eip712.py",
+      "bytes": 2976,
+      "sha256": "cb3ccd4b7a25d12c4ed90d964a2548bcbf031e58597888411b69117a73306df5"
+    },
+    {
+      "path": "tests/test_extension_manifest.py",
+      "bytes": 9762,
+      "sha256": "99e080c5b34cd78c3f973520951ee49378ef9969d572f100a8e92ed39cd3c343"
+    },
+    {
+      "path": "tests/test_grid_map.py",
+      "bytes": 4585,
+      "sha256": "2ea9134fa502220193ab321d7d7c3955fd6593e08fa2d616cdda960ad816ab9d"
+    },
+    {
+      "path": "tests/test_lesson.py",
+      "bytes": 9657,
+      "sha256": "9f55f364f3c9ea000746af747b5f623f8a2097cac44e87c6a9db7a883e98813e"
+    },
+    {
+      "path": "tests/test_monitor.py",
+      "bytes": 2078,
+      "sha256": "0f5c6a74eedb88d3ce6576c2a8a231b0ddf9a0e5cd7d00f4f22c7213bc1fb33d"
+    },
+    {
+      "path": "tests/test_risk.py",
+      "bytes": 1286,
+      "sha256": "1be81c46989ecf8a88858a9d019a5c5c0d59490afff55b521b22fa1a4e5451c5"
+    },
+    {
+      "path": "tests/test_setups.py",
+      "bytes": 11017,
+      "sha256": "e83a6e462a3748875acf71e912c6d74d2c9a5c3b2e506d021b03bda5aa1445a9"
+    },
+    {
+      "path": "tests/test_signal.py",
+      "bytes": 9882,
+      "sha256": "1f726ff8c2c703057f522aabc1454d729df48a17ce484e41547199c5b81cfcdc"
+    },
+    {
+      "path": "tests/test_timeframes.py",
+      "bytes": 5008,
+      "sha256": "1eb64516eb60d9cd5a2f786d1977b45f9171bee7a9cd7893f1c570f62bb8cbae"
+    },
+    {
+      "path": "tests/test_trader.py",
+      "bytes": 3673,
+      "sha256": "c496bddf7d95b1dabbecb10ca5c27273f333d69e73b7f2abccd1362cc1e1fa63"
+    }
+  ]
+}

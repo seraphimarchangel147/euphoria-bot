@@ -1,0 +1,68 @@
+{
+  "manifest_version": 3,
+  "name": "Euphoria helper",
+  "version": "0.4.2",
+  "description": "Manual player-learning helper: trusted tap capture, statistical advice, and confidence-gated projection overlay for a logged-in Euphoria tab.",
+  "permissions": [
+    "alarms",
+    "cookies",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://euphoria.finance/*",
+    "https://*.euphoria.finance/*",
+    "https://api.mainnet.euphoria.finance/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "comment": "MAIN world at document_start. The page opens its quote socket during module init, long before document_idle, so a helper injected via a <script> tag from the isolated world always arrives too late to wrap it. Declaring the page-world scripts here runs them synchronously before any page script.",
+      "matches": [
+        "https://euphoria.finance/*",
+        "https://www.euphoria.finance/*"
+      ],
+      "js": [
+        "grid-context.js",
+        "player-capture.js",
+        "inject.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://euphoria.finance/*",
+        "https://www.euphoria.finance/*"
+      ],
+      "js": [
+        "liquid-glass.js",
+        "player-capture.js",
+        "player-advice.js",
+        "content.js"
+      ],
+      "css": [
+        "overlay.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "inject.js",
+        "grid-context.js",
+        "player-capture.js",
+        "player-advice.js"
+      ],
+      "matches": [
+        "https://euphoria.finance/*",
+        "https://www.euphoria.finance/*"
+      ]
+    }
+  ]
+}
