@@ -1,6 +1,8 @@
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -85,7 +87,8 @@ def test_status_view_exposes_quoted_grid_when_control_loop_is_stopped():
     grid = {
         "authoritative": True,
         "multiplier_source": "quotesFeed",
-        "quoted_grid_ref_time": 1_700_000_000_123,
+        "quoted_grid_ref_time": 1_786_768_200_000,
+        "received_at": 1_786_768_200_000,
         "cells": [{
             "cell_x": 340_000_001,
             "cell_y": 6001,
@@ -105,20 +108,82 @@ def test_status_view_exposes_quoted_grid_when_control_loop_is_stopped():
     }
     view = bridge.status_view(state, now=1_786_768_202.0)
     assert view["control"] == {"running": False}
-    assert view["grid"] == grid
+    assert view["grid"]["authoritative"] is True
+    assert view["grid"]["stale"] is False
+    assert view["grid"]["grid_age_ms"] == 2000
     assert view["grid"]["cells"][0]["multiplier"] == 2.5
+    assert view["gridAgeSeconds"] == 2.0
 
 
-def test_bridge_token_is_high_entropy_and_pinned(tmp_path):
+def test_status_view_expires_grid_from_its_own_timestamp_not_fresh_envelope():
+    bridge = load_script("euphoria_bridge_server_stale_grid", "euphoria-bridge-server.py")
+    now = 1_786_768_202.0
+    state = {
+        "ts": "2026-08-15T04:30:02Z",
+        "grid": {
+            "authoritative": True,
+            "received_at": int((now - 5.001) * 1000),
+            "quoted_grid_ref_time": int((now - 5.001) * 1000),
+            "cells": [{"multiplier": 2.5}],
+        },
+    }
+    view = bridge.status_view(state, now=now)
+    assert view["ageSeconds"] == 0.0
+    assert view["gridAgeSeconds"] == 5.001
+    assert view["grid"]["authoritative"] is False
+    assert view["grid"]["stale"] is True
+    assert view["grid"]["cells"] == [{"multiplier": 2.5}]
+
+
+def test_status_view_rejects_authority_without_grid_received_at():
+    bridge = load_script("euphoria_bridge_server_missing_grid_time", "euphoria-bridge-server.py")
+    view = bridge.status_view({
+        "ts": "2026-08-15T04:30:02Z",
+        "grid": {"authoritative": True, "cells": [{"multiplier": 2.5}]},
+    }, now=1_786_768_202.0)
+    assert view["gridAgeSeconds"] is None
+    assert view["grid"]["authoritative"] is False
+    assert view["grid"]["stale"] is True
+
+
+def test_bridge_token_requires_explicit_atomic_provisioning_and_rotation(tmp_path):
     bridge = load_script("euphoria_bridge_server_token", "euphoria-bridge-server.py")
     token_path = tmp_path / "bridge-token"
     first = "a" * 64
-    assert bridge.authorize_bridge_token(first, token_path) is True
+    second = "b" * 64
+    assert bridge.authorize_bridge_token(first, token_path) is False
+    assert not token_path.exists()
+    bridge.rotate_bridge_token(first, token_path)
     assert token_path.read_text() == first
     assert os.stat(token_path).st_mode & 0o777 == 0o600
     assert bridge.authorize_bridge_token(first, token_path) is True
-    assert bridge.authorize_bridge_token("b" * 64, token_path) is False
+    assert bridge.authorize_bridge_token(second, token_path) is False
+    bridge.rotate_bridge_token(second, token_path)
+    assert token_path.read_text() == second
+    assert bridge.authorize_bridge_token(first, token_path) is False
+    assert bridge.authorize_bridge_token(second, token_path) is True
     assert bridge.authorize_bridge_token("short", token_path) is False
+
+
+def test_bridge_token_rotation_cli_reads_stdin_without_echoing_token(tmp_path):
+    script = Path(__file__).resolve().parents[1] / "scripts" / "euphoria-bridge-server.py"
+    token = "c" * 64
+    env = os.environ.copy()
+    env["EUPHORIA_BRIDGE_DATA"] = str(tmp_path)
+    result = subprocess.run(
+        [sys.executable, str(script), "token-rotate"],
+        input=token,
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert token not in result.stdout
+    assert token not in result.stderr
+    target = tmp_path / "bridge-token"
+    assert target.read_text() == token
+    assert os.stat(target).st_mode & 0o777 == 0o600
 
 
 def test_bridge_state_and_command_routes_reject_unpinned_clients(tmp_path):
@@ -131,6 +196,7 @@ def test_bridge_state_and_command_routes_reject_unpinned_clients(tmp_path):
     bridge.PLAYER_EVENTS = tmp_path / "player-events.jsonl"
     bridge.BRIDGE_TOKEN = tmp_path / "bridge-token"
     token = "a" * 64
+    bridge.rotate_bridge_token(token, bridge.BRIDGE_TOKEN)
 
     server = bridge.ThreadingHTTPServer(("127.0.0.1", 0), bridge.Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -158,6 +224,22 @@ def test_bridge_state_and_command_routes_reject_unpinned_clients(tmp_path):
         with urllib.request.urlopen(authorized, timeout=2) as response:
             assert json.load(response) == {"ok": True}
         assert json.loads(bridge.STATE.read_text())["tabs"] == []
+
+        rotated = "b" * 64
+        bridge.rotate_bridge_token(rotated, bridge.BRIDGE_TOKEN)
+        try:
+            urllib.request.urlopen(authorized, timeout=2)
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+        else:
+            raise AssertionError("pre-rotation bridge token remained authorized")
+        rotated_request = urllib.request.Request(
+            base + "/euphoria/state", data=payload,
+            headers={"Content-Type": "application/json", "X-Euphoria-Bridge-Token": rotated},
+            method="POST",
+        )
+        with urllib.request.urlopen(rotated_request, timeout=2) as response:
+            assert json.load(response) == {"ok": True}
 
         bridge._write_queue([{"id": "cmd-1", "type": "read_page"}])
         try:

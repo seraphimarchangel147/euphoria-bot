@@ -19,6 +19,18 @@ Open: what is still unverified
 
 ---
 
+## 2026-08-18 — Dominion — fixed exact-SHA deployment review blockers
+
+**Scope:** follow-up to draft PR #12 review of `ff6c441cd365014c47141a8b9d72510e972b99ab`; extension bridge freshness, bridge-server freshness, explicit token provisioning/rotation, tests, and activation/rollback documentation only. No live process, loaded extension, or trading mode changed.
+
+**What:** fresh state envelopes can no longer revive frozen quote grids: both the MV3 bridge and localhost status independently require the grid's own `received_at`, retain authority through 5.000 seconds, and fail closed after it. Removed silent trust-on-first-use. First install/recovery now requires an explicit stdin-only atomic token rotation; ordinary upgrades preserve the existing unpacked-extension path and storage identity. Token and data-directory modes are enforced at `0600`/`0700`.
+
+**Measured:** 572/572 Python tests, 3/3 Node relay tests, 12/12 JavaScript syntax checks, Python compile, manifest JSON, and `git diff --check` passed. Cold runtime: fresh grid authoritative at 0.005s; ancient grid replayed inside a 0.0s state envelope was non-authoritative/stale at 5.007s; unauthenticated state returned 401; control remained manual/stopped/dry-run; token/state/history were `0600`. Explicit rotation rejected the old token and accepted the replacement without a server restart. No profitable edge was established.
+
+**Open:** new exact SHA requires independent review and isolated native Windows browser QA. Live activation remains separately approval-gated.
+
+---
+
 ## 2026-08-17 — Dominion — deployment-ready isolated candidate
 
 **Scope:** complete stable Windows source snapshot imported onto `origin/main` in an isolated Linux worktree; reviewed PR #3 relay/server/tests; bridge route authentication; extension build marker; provenance manifest. The Windows live checkout, Chrome profile, `:8765`, and `:18901` were not modified or restarted.

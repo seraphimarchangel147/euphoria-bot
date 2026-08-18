@@ -10,15 +10,13 @@ function tick() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-test('bridge state relays authoritative quoted grid while control room is stopped', async () => {
-  const grid = {
-    authoritative: true,
-    multiplier_source: 'quotesFeed',
-    quoted_grid_ref_time: 1700000000123,
-    cells: [{ cell_x: 340000001, cell_y: 6001, side: 'up', distance: 1, multiplier: 2.5, break_even_probability: 0.4 }],
-  };
+async function runBridge(grid, nowMs = 1700000005000) {
   const posted = [];
   const token = 'a'.repeat(64);
+  class FakeDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [nowMs])); }
+    static now() { return nowMs; }
+  }
   const chrome = {
     storage: { local: {
       async get(keys) {
@@ -37,7 +35,7 @@ test('bridge state relays authoritative quoted grid while control room is stoppe
         return { grid };
       },
     },
-    runtime: { getManifest() { return { version: '0.4.0' }; } },
+    runtime: { getManifest() { return { version: '0.4.2' }; } },
     alarms: { create() {}, onAlarm: { addListener() {} } },
   };
   async function fetch(url, options = {}) {
@@ -49,13 +47,45 @@ test('bridge state relays authoritative quoted grid while control room is stoppe
     if (url.endsWith('/euphoria/commands')) return { async json() { return { commands: [] }; } };
     throw new Error(`unexpected URL ${url}`);
   }
-  const context = { chrome, crypto: webcrypto, fetch, console, Date, Uint8Array, setInterval() { return 1; } };
+  const context = { chrome, crypto: webcrypto, fetch, console, Date: FakeDate, Uint8Array, setInterval() { return 1; } };
   vm.runInNewContext(SRC, context, { filename: 'bridge.js' });
   await tick();
   await tick();
-
   assert.equal(posted.length, 1);
   assert.equal(posted[0].control, null);
-  assert.deepEqual(JSON.parse(JSON.stringify(posted[0].grid)), grid);
-  assert.equal(posted[0].grid.cells[0].multiplier, 2.5);
+  return posted[0];
+}
+
+function quotedGrid(receivedAt) {
+  return {
+    authoritative: true,
+    multiplier_source: 'quotesFeed',
+    quoted_grid_ref_time: receivedAt,
+    received_at: receivedAt,
+    cells: [{ cell_x: 340000001, cell_y: 6001, side: 'up', distance: 1, multiplier: 2.5, break_even_probability: 0.4 }],
+  };
+}
+
+test('bridge relays a grid at the five-second boundary while control is stopped', async () => {
+  const now = 1700000005000;
+  const posted = await runBridge(quotedGrid(now - 5000), now);
+  assert.equal(posted.grid.authoritative, true);
+  assert.equal(posted.grid.stale, false);
+  assert.equal(posted.grid.cells[0].multiplier, 2.5);
+});
+
+test('bridge expires a frozen grid even when the state envelope is fresh', async () => {
+  const now = 1700000005000;
+  const posted = await runBridge(quotedGrid(now - 5001), now);
+  assert.equal(posted.grid.authoritative, false);
+  assert.equal(posted.grid.stale, true);
+  assert.equal(posted.grid.cells[0].multiplier, 2.5);
+});
+
+test('bridge rejects authority when the grid has no received_at timestamp', async () => {
+  const grid = quotedGrid(1700000005000);
+  delete grid.received_at;
+  const posted = await runBridge(grid, 1700000005000);
+  assert.equal(posted.grid.authoritative, false);
+  assert.equal(posted.grid.stale, true);
 });

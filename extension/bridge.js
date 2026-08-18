@@ -21,6 +21,21 @@
 const BRIDGE_BASE = "http://127.0.0.1:18901";
 const EU_COOKIES = ["privy-token", "privy-id-token", "privy-session"];
 const POLL_MS = 5000;
+const GRID_MAX_AGE_MS = 5000;
+
+function gridForBridge(grid, nowMs = Date.now()) {
+  if (!grid || typeof grid !== "object" || Array.isArray(grid)) return null;
+  const receivedAt = Number(grid.received_at);
+  const ageMs = Number.isFinite(receivedAt) ? nowMs - receivedAt : null;
+  const fresh = ageMs !== null && ageMs >= 0 && ageMs <= GRID_MAX_AGE_MS;
+  const authoritative = grid.authoritative === true && fresh;
+  return {
+    ...grid,
+    authoritative,
+    stale: !authoritative,
+    grid_age_ms: ageMs === null ? null : Math.round(ageMs),
+  };
+}
 
 function randomBridgeToken() {
   const bytes = new Uint8Array(32);
@@ -86,7 +101,7 @@ async function pushState() {
   // stopped/offline control room must not erase the offered multipliers needed
   // for read-only EV logging.
   const page = tabs[0] ? await readPage(tabs[0].id) : null;
-  const grid = page && page.grid && typeof page.grid === "object" ? page.grid : null;
+  const grid = gridForBridge(page && page.grid);
   await bridgeFetch("/euphoria/state", {
     method: "POST",
     body: {

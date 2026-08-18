@@ -6,11 +6,13 @@ observations. It does not expose a trade, tap, or order endpoint.
 """
 from __future__ import annotations
 
+import getpass
 import hmac
 import json
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -32,6 +34,7 @@ MAX_BODY = 65_536
 PLAYER_EVENT_TYPES = frozenset({"player-tap", "player-settle"})
 EVENT_LOCK = threading.Lock()
 TOKEN_RE = re.compile(r"^[0-9a-f]{64}$")
+GRID_MAX_AGE_S = 5.0
 
 
 def _ensure_data() -> None:
@@ -95,24 +98,44 @@ def _validate_player_event(event: Any) -> None:
 
 
 def authorize_bridge_token(token: Any, target: Path = BRIDGE_TOKEN) -> bool:
+    """Validate against an explicitly provisioned token; never trust first use."""
     if not isinstance(token, str) or TOKEN_RE.fullmatch(token) is None:
         return False
-    target.parent.mkdir(parents=True, exist_ok=True)
     try:
         expected = target.read_text().strip()
-    except FileNotFoundError:
-        try:
-            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            try:
-                os.write(fd, token.encode())
-                os.fsync(fd)
-            finally:
-                os.close(fd)
-            expected = token
-        except FileExistsError:
-            expected = target.read_text().strip()
-    os.chmod(target, 0o600)
+        os.chmod(target, 0o600)
+    except OSError:
+        return False
     return bool(TOKEN_RE.fullmatch(expected)) and hmac.compare_digest(expected, token)
+
+
+def rotate_bridge_token(token: Any, target: Path = BRIDGE_TOKEN) -> None:
+    """Atomically provision or rotate a token supplied through a trusted local path."""
+    if not isinstance(token, str) or TOKEN_RE.fullmatch(token) is None:
+        raise ValueError("bridge token must be exactly 64 lowercase hexadecimal characters")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(target.parent, 0o700)
+    fd, temporary = tempfile.mkstemp(prefix=".bridge-token-", dir=target.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        os.write(fd, token.encode())
+        os.fsync(fd)
+        os.close(fd)
+        fd = -1
+        os.replace(temporary, target)
+        os.chmod(target, 0o600)
+        directory_fd = os.open(target.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 def _existing_player_events(target: Path) -> list[dict[str, Any]]:
@@ -168,24 +191,38 @@ def append_player_event(event: dict[str, Any], target: Path = PLAYER_EVENTS) -> 
 
 
 def status_view(state: dict[str, Any], now: float | None = None) -> dict[str, Any]:
-    """Public bridge snapshot, including raw quoted-grid context.
-
-    The grid is relayed independently of the optional control room so manual
-    play remains measurable while the control loop is stopped or unavailable.
-    """
+    """Return redacted status and independently expire quoted-grid authority."""
+    current_epoch = time.time() if now is None else now
     age: float | None = None
     if state.get("ts"):
         dt = datetime.fromisoformat(str(state["ts"]).replace("Z", "+00:00"))
-        current = datetime.fromtimestamp(time.time() if now is None else now, timezone.utc)
+        current = datetime.fromtimestamp(current_epoch, timezone.utc)
         age = (current - dt).total_seconds()
+
+    raw_grid = state.get("grid")
+    grid: dict[str, Any] | None = None
+    grid_age: float | None = None
+    if isinstance(raw_grid, dict):
+        grid = dict(raw_grid)
+        received_at = _finite_number(raw_grid.get("received_at"))
+        if received_at is not None:
+            received_epoch = received_at / 1000 if received_at > 100_000_000_000 else received_at
+            grid_age = current_epoch - received_epoch
+        fresh = grid_age is not None and 0 <= grid_age <= GRID_MAX_AGE_S
+        authoritative = raw_grid.get("authoritative") is True and fresh
+        grid["authoritative"] = authoritative
+        grid["stale"] = not authoritative
+        grid["grid_age_ms"] = None if grid_age is None else round(grid_age * 1000)
+
     return {
         "ok": True,
         "lastState": state.get("ts"),
         "ageSeconds": None if age is None else round(age, 1),
+        "gridAgeSeconds": None if grid_age is None else round(grid_age, 3),
         "tabs": state.get("tabs"),
         "cookieNames": state.get("cookieNames"),
         "control": state.get("control"),
-        "grid": state.get("grid"),
+        "grid": grid,
         "extVersion": state.get("extVersion"),
     }
 
@@ -289,6 +326,15 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     _ensure_data()
+    if len(sys.argv) > 1 and sys.argv[1] == "token-rotate":
+        token = (
+            getpass.getpass("New extension bridge token: ")
+            if sys.stdin.isatty()
+            else sys.stdin.read()
+        ).strip()
+        rotate_bridge_token(token, BRIDGE_TOKEN)
+        print(f"bridge token atomically rotated at {BRIDGE_TOKEN}")
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "cmd":
         command_type = sys.argv[2] if len(sys.argv) > 2 else "read_page"
         queue = _read_queue()
