@@ -25,7 +25,7 @@ Open: what is still unverified
 
 **What:** fresh state envelopes can no longer revive frozen quote grids: both the MV3 bridge and localhost status independently require the grid's own `received_at`, retain authority through 5.000 seconds, and fail closed after it. Removed silent trust-on-first-use. First install/recovery now requires an explicit stdin-only atomic token rotation; ordinary upgrades preserve the existing unpacked-extension path and storage identity. Token and data-directory modes are enforced at `0600`/`0700`.
 
-**Measured:** 572/572 Python tests, 3/3 Node relay tests, 12/12 JavaScript syntax checks, Python compile, manifest JSON, and `git diff --check` passed. Cold runtime: fresh grid authoritative at 0.005s; ancient grid replayed inside a 0.0s state envelope was non-authoritative/stale at 5.007s; unauthenticated state returned 401; control remained manual/stopped/dry-run; token/state/history were `0600`. Explicit rotation rejected the old token and accepted the replacement without a server restart. No profitable edge was established.
+**Measured:** 571/571 Python tests, 3/3 Node relay tests, 12/12 JavaScript syntax checks, Python compile, manifest JSON, and `git diff --check` passed. Cold runtime: fresh grid authoritative at 0.005s; ancient grid replayed inside a 0.0s state envelope was non-authoritative/stale at 5.007s; unauthenticated state returned 401; control remained manual/stopped/dry-run; token/state/history were `0600`. Explicit rotation rejected the old token and accepted the replacement without a server restart. No profitable edge was established.
 
 **Open:** new exact SHA requires independent review and isolated native Windows browser QA. Live activation remains separately approval-gated.
 
